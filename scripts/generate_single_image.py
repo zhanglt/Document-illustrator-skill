@@ -8,6 +8,7 @@ import os
 import sys
 import argparse
 from pathlib import Path
+from style_selection import add_style_arguments, resolve_style
 from env_config import find_and_load_env, get_provider_config
 from image_api import add_provider_argument, generate_nebula, generate_nanobanana, get_provider, resolve_options, validate_options
 
@@ -101,15 +102,19 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
         from google import genai
         from google.genai import types
 
-        api_key = get_provider_config("gemini").get("GEMINI_API_KEY")
+        config = get_provider_config("gemini")
+        api_key = config.get("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("请设置 GEMINI_API_KEY")
+            raise ValueError("请在 [gemini] 分组或环境变量中设置 GEMINI_API_KEY")
+        model = config.get("GEMINI_MODEL", "gemini-3-pro-image-preview")
+        if not model or not model.strip():
+            raise ValueError("GEMINI_MODEL 不能为空")
 
         # 调用 Gemini API
         client = genai.Client(api_key=api_key)
 
         response = client.models.generate_content(
-            model="gemini-3-pro-image-preview",  # Nano Banana Pro
+            model=model,
             contents=full_prompt,
             config=types.GenerateContentConfig(
                 response_modalities=['IMAGE'],
@@ -182,6 +187,7 @@ def main():
 
 环境变量:
   GEMINI_API_KEY: Gemini 后端密钥
+  GEMINI_MODEL: 原生 Gemini 模型，默认 gemini-3-pro-image-preview
   NEBULA_API_KEY: Nebula image2-4k 分组密钥
   NEBULA_MODEL / NEBULA_SIZE / NEBULA_QUALITY: image2-4k 请求参数
   NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
@@ -194,7 +200,7 @@ def main():
 
     parser.add_argument('--title', required=True, help='图片标题')
     parser.add_argument('--content', required=True, help='图片内容文本')
-    parser.add_argument('--style-file', required=True, help='风格提示词文件路径')
+    add_style_arguments(parser)
     parser.add_argument('--output', required=True, help='输出文件路径（包含文件名）')
     parser.add_argument(
         '--ratio',
@@ -219,10 +225,7 @@ def main():
     resolve_options(parser, args)
 
     # 读取风格提示词
-    style_file_path = Path(args.style_file)
-    if not style_file_path.exists():
-        print(f"错误: 风格文件不存在: {args.style_file}", file=sys.stderr)
-        sys.exit(1)
+    style_file_path = Path(resolve_style(parser, args))
 
     with open(style_file_path, 'r', encoding='utf-8') as f:
         style_prompt = f.read()

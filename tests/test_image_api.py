@@ -42,6 +42,7 @@ class NebulaTests(unittest.TestCase):
             "ILLUSTRATOR_SINGLE_RATIO": "", "ILLUSTRATOR_BATCH_RATIO": "",
             "ILLUSTRATOR_RESOLUTION": "",
             "NEBULA_MODEL": "gpt-image-2-4k", "NEBULA_SIZE": "3840x2160", "NEBULA_QUALITY": "high",
+            "GEMINI_MODEL": "gemini-3-pro-image-preview",
         })
         env.start()
         self.addCleanup(env.stop)
@@ -205,6 +206,31 @@ class NebulaTests(unittest.TestCase):
         self.assertEqual(request["model"], "gemini-3-pro-image-preview")
         self.assertEqual(request["config"].image_config.aspect_ratio, "16:9")
         self.assertEqual(request["config"].image_config.image_size, "2K")
+
+    def test_native_gemini_group_model_key_and_batch_request(self):
+        from google import genai
+
+        client = unittest.mock.MagicMock()
+        client.models.generate_content.return_value = SimpleNamespace(parts=[SimpleNamespace(
+            inline_data=object(), as_image=lambda: Image.new("RGB", (16, 9)),
+        )])
+        section = {"gemini": {
+            "GEMINI_API_KEY": "google-section-test", "GEMINI_MODEL": "gemini-3.1-flash-image",
+            "ILLUSTRATOR_BATCH_RATIO": "3:4", "ILLUSTRATOR_RESOLUTION": "4K",
+        }}
+        with patch.object(env_config, "_sections", section), patch.object(genai, "Client", return_value=client) as factory:
+            args = SimpleNamespace(provider="gemini", ratio=None, resolution=None)
+            image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
+            result = generate_illustrations.generate_illustration(
+                "title", "body", "style", self.temp.name, 1, args.resolution,
+                provider=args.provider, aspect_ratio=args.ratio,
+            )
+        self.assertTrue(Path(result).exists())
+        factory.assert_called_once_with(api_key="google-section-test")
+        request = client.models.generate_content.call_args.kwargs
+        self.assertEqual(request["model"], "gemini-3.1-flash-image")
+        self.assertEqual(request["config"].image_config.aspect_ratio, "3:4")
+        self.assertEqual(request["config"].image_config.image_size, "4K")
 
     def test_timeout_does_not_resubmit_post(self):
         opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=URLError(TimeoutError())))

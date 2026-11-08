@@ -150,7 +150,7 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 统一 `.env` 同时支持原有平铺格式和以下分组格式（示例密钥均为占位符）：
 
 ```dotenv
-# 值为 nanobanana 或者 nebula；默认后端必须放在第一个分组之前
+# 值为 nanobanana、nebula 或 gemini；默认后端必须放在第一个分组之前
 ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
 
 [nanobanana]
@@ -165,6 +165,13 @@ NEBULA_API_KEY=your-image2-4k-api-key
 NEBULA_MODEL=gpt-image-2-4k
 NEBULA_SIZE=3840x2160
 NEBULA_QUALITY=high
+
+[gemini]
+GEMINI_API_KEY=your-google-gemini-api-key
+GEMINI_MODEL=gemini-3-pro-image-preview
+ILLUSTRATOR_SINGLE_RATIO=16:9
+ILLUSTRATOR_BATCH_RATIO=16:9
+ILLUSTRATOR_RESOLUTION=2K
 ```
 
 `[nanobanana]` 的 `ILLUSTRATOR_*` 图片参数仅对 nanobanana 生效。
@@ -172,7 +179,13 @@ NEBULA_QUALITY=high
 实际请求像素由 `NEBULA_SIZE` 决定。切换顶部默认后端即可选择对应分组。
 
 `--provider nebula` 对应 `[image2-4k]`；`--provider nanobanana` 对应 `[nanobanana]`；
-Google 官方后端可使用 `[gemini]`。分组只对其对应后端生效，不会写入进程环境或覆盖其他分组。
+Google 官方后端使用 `[gemini]`，通过 `google-genai` 调用原生 Google Gemini API，
+不会调用 Nebula。`GEMINI_API_KEY` 使用 Google 官方密钥，`GEMINI_MODEL` 默认
+`gemini-3-pro-image-preview`；可按官方模型权限更换。该分组独立配置比例和分辨率，
+支持现有 `16:9`、`3:4` 以及 `2K`、`4K`，实际模型支持情况以官方接口为准。
+先安装 `google-genai`，再设置顶部 `ILLUSTRATOR_IMAGE_PROVIDER=gemini`，
+或用命令行 `--provider gemini` 选择原生后端。
+分组只对其对应后端生效，不会写入进程环境或覆盖其他分组。
 分组内的 `ILLUSTRATOR_IMAGE_PROVIDER` 会被忽略；选择默认后端只使用第一个分组之前的全局值，
 或在未配置全局值时使用进程环境变量。推荐删除分组内重复的后端选择项。
 分组支持注释、引号和多行值，沿用 dotenv 的 `${变量}` 插值；不支持的分组会报错。
@@ -315,6 +328,18 @@ python3 scripts/generate_single_image.py --help
 预期输出应显示脚本的帮助信息，表示安装成功。
 
 ## 📖 使用方法
+
+### 每次任务先选择生图风格
+
+每次新任务都需要用户明确选择风格。助手会展示渐变玻璃卡片、票据风格、矢量插画及自定义风格选项；
+用户在本次请求中已经指定的风格可直接采用。同一任务的系列图片只需选择一次。
+助手可以提出建议，但不能自动决定风格、沿用上一次任务的选择，或把内容确认视为风格选择。
+
+单图与批量 CLI 共用风格选择入口：未传 `--style` 或 `--style-file` 时显示菜单并等待输入，
+空输入不会采用默认值；输入结束仍未选择时停止，不发起生图请求。
+显式参数代表本次选择，供直接 CLI 使用或助手在获得用户选择后传入；这两个参数互斥。
+自定义风格通过 `--style-file` 指定。助手直接调用 Python 函数时也须先向用户确认风格，
+脚本无法判断参数是否来自真实的对话选择，因此该要求同时写入 `SKILL.md`。
 
 ### 方式 1: 通过 Claude Code 使用（推荐）
 

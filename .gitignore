@@ -44,6 +44,7 @@ ENV/
 *.temp
 .cache/
 images
+images_bak
 六张网_水网建设_增量简报_20261031.md
 # 测试覆盖率
 .coverage

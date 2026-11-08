@@ -154,6 +154,32 @@ class EnvConfigTests(unittest.TestCase):
                 image_api.resolve_options(argparse.ArgumentParser(), args)
                 self.assertEqual((args.provider, args.resolution), ("nebula", "4K"))
 
+    def test_native_gemini_section_is_isolated_and_selected(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(
+            "ILLUSTRATOR_IMAGE_PROVIDER=gemini\n"
+            "[nanobanana]\nNEBULA_NANOBANANA_API_KEY=banana-test\nILLUSTRATOR_RESOLUTION=1K\n"
+            "[image2-4k]\nNEBULA_API_KEY=nebula-test\nNEBULA_SIZE=3840x2160\n"
+            "[gemini]\nGEMINI_API_KEY=google-test\nGEMINI_MODEL=gemini-3.1-flash-image\n"
+            "ILLUSTRATOR_SINGLE_RATIO=3:4\nILLUSTRATOR_BATCH_RATIO=16:9\nILLUSTRATOR_RESOLUTION=4K\n",
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
+            env_config.find_and_load_env()
+            for batch, ratio in ((False, "3:4"), (True, "16:9")):
+                args = SimpleNamespace(provider=None, ratio=None, resolution=None)
+                image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
+                self.assertEqual((args.provider, args.ratio, args.resolution), ("gemini", ratio, "4K"))
+            config = env_config.get_provider_config("gemini")
+            self.assertEqual(config["GEMINI_API_KEY"], "google-test")
+            self.assertEqual(config["GEMINI_MODEL"], "gemini-3.1-flash-image")
+            self.assertNotIn("NEBULA_API_KEY", config)
+            self.assertNotIn("NEBULA_NANOBANANA_API_KEY", config)
+            self.assertNotIn("GEMINI_API_KEY", env_config.get_provider_config("nanobanana"))
+            args = SimpleNamespace(provider="nanobanana", ratio=None, resolution=None)
+            image_api.resolve_options(argparse.ArgumentParser(), args)
+            self.assertEqual(args.resolution, "1K")
+
     def test_invalid_group_fails_without_exposing_values(self):
         self.config.parent.mkdir(parents=True)
         self.config.write_text("[typo]\nSECRET=test-secret\n", encoding="utf-8")

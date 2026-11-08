@@ -9,6 +9,7 @@ import sys
 import re
 import argparse
 from pathlib import Path
+from style_selection import add_style_arguments, choose_style, resolve_style
 from env_config import find_and_load_env
 from image_api import add_provider_argument, resolve_options
 
@@ -293,53 +294,7 @@ def prompt_user_for_granularity(structure):
 
 
 def prompt_user_for_style():
-    """
-    让用户选择风格
-
-    返回：风格文件路径
-    """
-    # 获取 styles 目录路径
-    skill_root = Path(__file__).parent.parent
-    styles_dir = skill_root / "styles"
-
-    # 定义风格选项
-    styles = [
-        {
-            'number': '1',
-            'name': '渐变玻璃卡片风格',
-            'description': '现代科技感，毛玻璃效果，未来感强',
-            'file': 'gradient-glass.md'
-        },
-        {
-            'number': '2',
-            'name': '票据风格',
-            'description': '黑白对比，极简设计，高级感',
-            'file': 'ticket.md'
-        },
-        {
-            'number': '3',
-            'name': '矢量插画风格',
-            'description': '扁平化插画，色彩柔和，温馨可爱',
-            'file': 'vector-illustration.md'
-        }
-    ]
-
-    print("\n请选择配图风格：")
-    for style in styles:
-        print(f"{style['number']}. {style['name']} - {style['description']}")
-
-    while True:
-        choice = input("\n请输入选择 (1/2/3): ").strip()
-
-        for style in styles:
-            if choice == style['number']:
-                style_path = styles_dir / style['file']
-                if not style_path.exists():
-                    print(f"错误: 风格文件不存在: {style_path}", file=sys.stderr)
-                    sys.exit(1)
-                return str(style_path)
-
-        print("无效选择，请输入 1、2 或 3")
+    return choose_style()
 
 
 def extract_core_prompt(style_file_path):
@@ -441,6 +396,7 @@ def main():
 
 环境变量:
   GEMINI_API_KEY: Gemini 后端密钥
+  GEMINI_MODEL: 原生 Gemini 模型，默认 gemini-3-pro-image-preview
   NEBULA_API_KEY: Nebula image2-4k 分组密钥
   NEBULA_MODEL / NEBULA_SIZE / NEBULA_QUALITY: image2-4k 请求参数
   NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
@@ -467,11 +423,7 @@ def main():
         default=None,
         help='分辨率（默认读取 ILLUSTRATOR_RESOLUTION；未配置时 Gemini/nanobanana 为 2K，Nebula 为 4K）'
     )
-    parser.add_argument(
-        '--style',
-        choices=['gradient-glass', 'ticket', 'vector-illustration'],
-        help='配图风格（gradient-glass: 渐变玻璃卡片, ticket: 票据风格, vector-illustration: 矢量插画）'
-    )
+    add_style_arguments(parser)
     parser.add_argument(
         '--level',
         choices=['h2', 'h3', 'h4'],
@@ -481,6 +433,7 @@ def main():
     add_provider_argument(parser)
     args = parser.parse_args()
     resolve_options(parser, args, batch=True)
+    style_file = resolve_style(parser, args)
 
     print("=" * 60)
     print("Document Illustrator - 文档配图生成器")
@@ -507,27 +460,6 @@ def main():
         selected_level = prompt_user_for_granularity(structure)
 
     # 3. 用户选择风格
-    if args.style:
-        # 非交互模式：使用命令行参数
-        skill_root = Path(__file__).parent.parent
-        styles_dir = skill_root / "styles"
-        style_file = str(styles_dir / f"{args.style}.md")
-
-        if not Path(style_file).exists():
-            print(f"错误: 风格文件不存在: {style_file}", file=sys.stderr)
-            sys.exit(1)
-
-        style_names = {
-            'gradient-glass': '渐变玻璃卡片风格',
-            'ticket': '票据风格',
-            'vector-illustration': '矢量插画风格'
-        }
-        print(f"\n🎨 使用指定风格: {style_names[args.style]}")
-    else:
-        # 交互模式：提示用户选择
-        print("\n🎨 选择配图风格...")
-        style_file = prompt_user_for_style()
-
     style_prompt = extract_core_prompt(style_file)
 
     # 显示提取的风格提示词预览（前 200 个字符）
