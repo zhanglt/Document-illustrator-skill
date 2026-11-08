@@ -315,6 +315,16 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 分辨率使用后端默认值（Gemini/nanobanana 为 2K，image2-4k 为 4K）。
 这些设置适用于所有后端；与后端限制冲突时，请求前报错，须调整配置或显式覆盖。
 
+统一 `.env` 兼容平铺格式和 `[image2-4k]`、`[nanobanana]`、`[gemini]` 分组。
+默认 `ILLUSTRATOR_IMAGE_PROVIDER` 必须放在第一个分组之前，分组内的同名项会被忽略。
+`nebula` 使用 `[image2-4k]`，其余后端使用同名分组；密钥、模型和图片参数按所选分组读取。
+参数优先级：命令行 > 对应分组 > 全局配置 > 进程环境 > 内置默认值。
+推荐仅在 `[nanobanana]` 配置 `ILLUSTRATOR_SINGLE_RATIO`、`ILLUSTRATOR_BATCH_RATIO`、
+`ILLUSTRATOR_RESOLUTION`；`[image2-4k]` 配置 `NEBULA_API_KEY`、`NEBULA_MODEL`、
+`NEBULA_SIZE`、`NEBULA_QUALITY`，不必重复比例和分辨率。其缺省值为 16:9、4K，
+不会继承 `[nanobanana]` 的 2K。
+不要将各分组参数合并成同一组全局环境变量；完整示例见 README 的配置比例与分辨率章节。
+
 ```powershell
 python -X utf8 scripts/generate_single_image.py --provider nanobanana --title "主题" --content "配图内容" --style-file styles/ticket.md --ratio 3:4 --resolution 2K --output output/banana.png
 python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanana --style ticket --level h2 --resolution 2K
@@ -338,8 +348,12 @@ python -X utf8 scripts/generate_single_image.py --provider nebula --title "主�
 python -X utf8 scripts/generate_illustrations.py article.md --provider nebula --style ticket --level h2 --resolution 4K
 ```
 
-脚本调用 `POST https://img-api.apinebula.ai/v1/images/generations`，固定使用
+脚本调用 `POST https://img-api.apinebula.ai/v1/images/generations`，默认使用
 `gpt-image-2-4k`、`3840x2160`、`quality=high`、`response_format=url`。
+`[image2-4k]` 可配置 `NEBULA_MODEL`、`NEBULA_SIZE`、`NEBULA_QUALITY`，分别设置
+请求的 `model`、`size`、`quality`；缺失时沿用上述默认值。保存前按 `NEBULA_SIZE`
+验证实际像素，`--resolution` 不会覆盖该像素配置。当前分组官方支持组合仍以上述默认值为准，
+更改配置并不代表服务端支持其他模型、尺寸或质量。
 优先读取 URL，兼容 Base64；保存前验证真实像素，将服务端 JPEG 转为本地扩展名对应的格式。
 接口响应保存为 `<图片文件名>.response.json`，下载失败时先复用其中的临时链接恢复下载。
 POST 超时后任务状态可能未知，不自动重发；先确认服务端状态，避免重复计费。

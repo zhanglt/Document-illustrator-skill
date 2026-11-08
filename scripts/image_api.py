@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from PIL import Image
+from env_config import get_provider_config
 
 
 NEBULA_ENDPOINT = "https://img-api.apinebula.ai/v1/images/generations"
@@ -51,8 +52,9 @@ def resolve_options(parser, args, aspect_ratio=None, batch=False):
     ratio_key = "ILLUSTRATOR_BATCH_RATIO" if batch else "ILLUSTRATOR_SINGLE_RATIO"
     try:
         args.provider = get_provider(args.provider)
-        args.ratio = aspect_ratio or getattr(args, "ratio", None) or os.environ.get(ratio_key) or "16:9"
-        args.resolution = args.resolution or os.environ.get("ILLUSTRATOR_RESOLUTION") or (
+        config = get_provider_config(args.provider)
+        args.ratio = aspect_ratio or getattr(args, "ratio", None) or config.get(ratio_key) or "16:9"
+        args.resolution = args.resolution or config.get("ILLUSTRATOR_RESOLUTION") or (
             "4K" if args.provider == "nebula" else "2K"
         )
         validate_options(args.provider, args.ratio, args.resolution)
@@ -95,10 +97,11 @@ def read_request(request, timeout, limit):
 def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K"):
     """使用 Gemini 原生格式生图，不持久化含完整 Base64 的响应。"""
     validate_options("nanobanana", aspect_ratio, resolution)
-    api_key = os.environ.get("NEBULA_NANOBANANA_API_KEY")
+    config = get_provider_config("nanobanana")
+    api_key = config.get("NEBULA_NANOBANANA_API_KEY")
     if not api_key:
         raise ValueError("请设置 NEBULA_NANOBANANA_API_KEY，令牌必须属于 nanobanana 分组")
-    model = os.environ.get("NEBULA_NANOBANANA_MODEL", "gemini-3.1-flash-image")
+    model = config.get("NEBULA_NANOBANANA_MODEL", "gemini-3.1-flash-image")
     if not re.fullmatch(r"[A-Za-z0-9._-]+", model):
         raise ValueError("NEBULA_NANOBANANA_MODEL 必须为有效模型名称")
     payload = {
@@ -148,12 +151,25 @@ def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K
 
 
 def generate_nebula(prompt, output_path):
-    api_key = os.environ.get("NEBULA_API_KEY")
+    config = get_provider_config("nebula")
+    api_key = config.get("NEBULA_API_KEY")
     if not api_key:
         raise ValueError("请设置 NEBULA_API_KEY，令牌必须属于 image2-4k 分组")
+    model = config.get("NEBULA_MODEL", "gpt-image-2-4k")
+    size = config.get("NEBULA_SIZE", "3840x2160")
+    quality = config.get("NEBULA_QUALITY", "high")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", model):
+        raise ValueError("NEBULA_MODEL 必须为有效模型名称")
+    if not re.fullmatch(r"[1-9][0-9]{0,4}x[1-9][0-9]{0,4}", size):
+        raise ValueError("NEBULA_SIZE 必须为宽x高格式，例如 3840x2160")
+    expected_size = tuple(int(value) for value in size.split("x"))
+    if max(expected_size) > 16384 or expected_size[0] * expected_size[1] > 64 * 1024 * 1024:
+        raise ValueError("NEBULA_SIZE 超过本地图片处理上限")
+    if quality not in ("auto", "low", "medium", "high"):
+        raise ValueError("NEBULA_QUALITY 必须为 auto、low、medium 或 high")
     payload = {
-        "model": "gpt-image-2-4k", "prompt": prompt,
-        "size": "3840x2160", "quality": "high", "response_format": "url",
+        "model": model, "prompt": prompt,
+        "size": size, "quality": quality, "response_format": "url",
     }
     request = Request(
         NEBULA_ENDPOINT, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -191,8 +207,8 @@ def generate_nebula(prompt, output_path):
 
     with Image.open(io.BytesIO(image_bytes)) as image:
         image.load()
-        if image.size != (3840, 2160):
-            raise ValueError(f"Nebula 实际图片尺寸为 {image.width}x{image.height}，预期 3840x2160")
+        if image.size != expected_size:
+            raise ValueError(f"Nebula 实际图片尺寸为 {image.width}x{image.height}，预期 {size}")
         # 服务端可能返回 JPEG；按本地扩展名编码，避免把 JPEG 字节命名为 PNG。
         image.save(output_path)
     return str(output_path)

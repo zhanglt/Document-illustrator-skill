@@ -147,6 +147,37 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 
 ### 配置单图比例、批量比例与请求分辨率
 
+统一 `.env` 同时支持原有平铺格式和以下分组格式（示例密钥均为占位符）：
+
+```dotenv
+# 值为 nanobanana 或者 nebula；默认后端必须放在第一个分组之前
+ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
+
+[nanobanana]
+NEBULA_NANOBANANA_API_KEY=your-nanobanana-api-key
+NEBULA_NANOBANANA_MODEL=gemini-3.1-flash-image
+ILLUSTRATOR_SINGLE_RATIO=16:9
+ILLUSTRATOR_BATCH_RATIO=16:9
+ILLUSTRATOR_RESOLUTION=2K
+
+[image2-4k]
+NEBULA_API_KEY=your-image2-4k-api-key
+NEBULA_MODEL=gpt-image-2-4k
+NEBULA_SIZE=3840x2160
+NEBULA_QUALITY=high
+```
+
+`[nanobanana]` 的 `ILLUSTRATOR_*` 图片参数仅对 nanobanana 生效。
+`[image2-4k]` 无需重复配置比例与分辨率；会使用其内置的 16:9、4K 默认值，
+实际请求像素由 `NEBULA_SIZE` 决定。切换顶部默认后端即可选择对应分组。
+
+`--provider nebula` 对应 `[image2-4k]`；`--provider nanobanana` 对应 `[nanobanana]`；
+Google 官方后端可使用 `[gemini]`。分组只对其对应后端生效，不会写入进程环境或覆盖其他分组。
+分组内的 `ILLUSTRATOR_IMAGE_PROVIDER` 会被忽略；选择默认后端只使用第一个分组之前的全局值，
+或在未配置全局值时使用进程环境变量。推荐删除分组内重复的后端选择项。
+分组支持注释、引号和多行值，沿用 dotenv 的 `${变量}` 插值；不支持的分组会报错。
+文件一旦进入分组，后续配置均属于该分组，直到遇到下一个分组标题。
+
 在统一 `.env` 中配置以下三项，适用于所有后端：
 
 ```dotenv
@@ -160,7 +191,7 @@ ILLUSTRATOR_RESOLUTION=2K
 Gemini 官方模式仅支持原有 `2K`、`4K`，nanobanana 具体支持值以所选模型为准。
 配置与后端不兼容时，在请求前报错，不自动修改配置或切换服务。
 
-优先级：命令行 `--ratio` / `--resolution` > 统一 `.env` 中的同名配置项 >
+优先级：命令行 `--ratio` / `--resolution` > 所选后端分组中的配置 > `.env` 全局配置 >
 进程环境变量 > 内置默认值。未配置或值为空时，比例默认 `16:9`；
 分辨率按后端默认：Gemini/nanobanana 为 `2K`，image2-4k 为 `4K`。
 `.env` 中的值沿用现有规则，覆盖同名进程环境变量。
@@ -197,11 +228,20 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nebula --
 ```
 
 接口依据：[Nebula image2-4k 官方文档](https://docs.apinebula.ai/docs/advanced/image/image2-4k)。
-请求为 `POST https://img-api.apinebula.ai/v1/images/generations`，固定使用
+请求为 `POST https://img-api.apinebula.ai/v1/images/generations`，默认使用
 `model=gpt-image-2-4k`、`size=3840x2160`、`quality=high`、`response_format=url`，
 超时为 1800 秒。该分组仅支持 **16:9、4K**，选择 Nebula 时默认使用 4K；
 显式传入 `--resolution 2K` 或单图 `--ratio 3:4` 会在请求前报错。
 Gemini 保留原有比例，默认 2K。
+
+`[image2-4k]` 中可通过 `NEBULA_MODEL`、`NEBULA_SIZE`、`NEBULA_QUALITY`
+设置请求体的 `model`、`size`、`quality`，未配置时分别为 `gpt-image-2-4k`、
+`3840x2160`、`high`。`NEBULA_SIZE` 使用像素 `宽x高` 格式，输出图片的实际像素
+必须与该配置一致；此后端请求的实际尺寸由 `NEBULA_SIZE` 决定，
+`ILLUSTRATOR_RESOLUTION` / `--resolution` 不会改写它。CLI 仍保留原有 16:9、4K 限制。
+本地接受 `auto`、`low`、`medium`、`high` 的 quality 值；服务端是否接受具体模型、
+尺寸和质量取决于令牌分组与接口能力。当前 image2-4k 文档对应的组合仍为
+`gpt-image-2-4k`、`3840x2160`、`high`，不代表其他组合已获服务端支持或验证。
 
 优先下载 `data[0].url`，无 URL 时读取 `data[0].b64_json`；下载请求不携带 API 密钥。
 保存前验证实际像素为 `3840x2160`，服务端 JPEG 会按本地文件扩展名重新编码。

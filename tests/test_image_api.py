@@ -17,6 +17,7 @@ from urllib.request import Request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import image_api
+import env_config
 import generate_single_image
 import generate_illustrations
 from PIL import Image
@@ -30,6 +31,9 @@ class NebulaTests(unittest.TestCase):
         cls.jpeg = buffer.getvalue()
 
     def setUp(self):
+        sections = patch.object(env_config, "_sections", {})
+        sections.start()
+        self.addCleanup(sections.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.output = Path(self.temp.name) / "images" / "result.png"
@@ -37,6 +41,7 @@ class NebulaTests(unittest.TestCase):
             "NEBULA_API_KEY": "test-key", "ILLUSTRATOR_IMAGE_PROVIDER": "gemini",
             "ILLUSTRATOR_SINGLE_RATIO": "", "ILLUSTRATOR_BATCH_RATIO": "",
             "ILLUSTRATOR_RESOLUTION": "",
+            "NEBULA_MODEL": "gpt-image-2-4k", "NEBULA_SIZE": "3840x2160", "NEBULA_QUALITY": "high",
         })
         env.start()
         self.addCleanup(env.stop)
@@ -68,6 +73,29 @@ class NebulaTests(unittest.TestCase):
             image_api.generate_nebula("test", self.output)
         self.assertEqual(read.call_count, 1)
         self.assertTrue(self.output.exists())
+
+    def test_group_request_parameters_and_dimension_validation(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (160, 90)).save(buffer, format="PNG")
+        section = {"image2-4k": {
+            "NEBULA_MODEL": "test-image-model", "NEBULA_SIZE": "160x90", "NEBULA_QUALITY": "medium",
+        }}
+        with patch.object(env_config, "_sections", section), patch.object(image_api, "read_request", return_value=self.response({
+            "b64_json": base64.b64encode(buffer.getvalue()).decode(),
+        })) as read:
+            image_api.generate_nebula("test", self.output)
+        payload = json.loads(read.call_args.args[0].data)
+        self.assertEqual((payload["model"], payload["size"], payload["quality"]), ("test-image-model", "160x90", "medium"))
+        with Image.open(self.output) as image:
+            self.assertEqual(image.size, (160, 90))
+
+    def test_invalid_request_parameters_fail_before_request(self):
+        for key, value in (("NEBULA_MODEL", ""), ("NEBULA_SIZE", "auto"), ("NEBULA_SIZE", "0x10"),
+                           ("NEBULA_SIZE", "99999x99999"), ("NEBULA_QUALITY", "invalid")):
+            with self.subTest(key=key, value=value), patch.dict(os.environ, {key: value}), patch.object(image_api, "read_request") as read:
+                with self.assertRaises(ValueError):
+                    image_api.generate_nebula("test", self.output)
+                read.assert_not_called()
 
     def test_url_preferred_when_both_fields_exist(self):
         with patch.object(image_api, "read_request", side_effect=[

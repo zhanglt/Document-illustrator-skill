@@ -18,6 +18,9 @@ import image_api
 
 class EnvConfigTests(unittest.TestCase):
     def setUp(self):
+        sections = patch.object(env_config, "_sections", {})
+        sections.start()
+        self.addCleanup(sections.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.home = Path(self.temp.name)
@@ -82,10 +85,82 @@ class EnvConfigTests(unittest.TestCase):
     def test_missing_shared_file_preserves_environment(self):
         with patch.object(Path, "home", return_value=self.home), patch.dict(
             os.environ, {"ILLUSTRATOR_TEST_CONFIG": "process"}
-        ), patch.object(env_config, "load_dotenv") as load:
+        ), patch.object(env_config, "dotenv_values") as load:
             self.assertFalse(env_config.find_and_load_env())
             self.assertEqual(os.environ["ILLUSTRATOR_TEST_CONFIG"], "process")
             load.assert_not_called()
+
+    def test_sections_select_keys_model_and_options_without_leaking(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(
+            "ILLUSTRATOR_IMAGE_PROVIDER=nanobanana\n"
+            "ILLUSTRATOR_RESOLUTION=1K\n"
+            "[image2-4k]\nNEBULA_API_KEY=4k-test\nILLUSTRATOR_RESOLUTION=4K\n"
+            "[nanobanana]\nNEBULA_NANOBANANA_API_KEY=banana-test\n"
+            "NEBULA_NANOBANANA_MODEL=gemini-3-pro-image-preview\n"
+            "ILLUSTRATOR_IMAGE_PROVIDER=nebula\nILLUSTRATOR_SINGLE_RATIO=3:4\n"
+            "ILLUSTRATOR_BATCH_RATIO=3:4\nILLUSTRATOR_RESOLUTION=2K\n",
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
+            env_config.find_and_load_env()
+            for provider, ratio, resolution in ((None, "3:4", "2K"), ("nebula", "16:9", "4K"), (None, "3:4", "2K")):
+                for batch in (True, False):
+                    args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
+                    image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
+                    self.assertEqual((args.ratio, args.resolution), (ratio, resolution))
+            self.assertEqual(image_api.get_provider(), "nanobanana")
+            self.assertEqual(env_config.get_provider_config("nebula")["NEBULA_API_KEY"], "4k-test")
+            banana = env_config.get_provider_config("nanobanana")
+            self.assertEqual(banana["NEBULA_NANOBANANA_API_KEY"], "banana-test")
+            self.assertEqual(banana["NEBULA_NANOBANANA_MODEL"], "gemini-3-pro-image-preview")
+            self.assertNotIn("NEBULA_NANOBANANA_API_KEY", env_config.get_provider_config("nebula"))
+            args = SimpleNamespace(provider=None, ratio="16:9", resolution="4K")
+            image_api.resolve_options(argparse.ArgumentParser(), args)
+            self.assertEqual((args.ratio, args.resolution), ("16:9", "4K"))
+
+    def test_quotes_comments_and_multiline_values(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(
+            'ILLUSTRATOR_IMAGE_PROVIDER=nanobanana\n'
+            'ILLUSTRATOR_TEST_CONFIG="first\n[nanobanana]\nlast"\n'
+            '[nanobanana] # 图片参数\nILLUSTRATOR_RESOLUTION="2K" # 注释\n',
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
+            env_config.find_and_load_env()
+            self.assertEqual(os.environ["ILLUSTRATOR_TEST_CONFIG"], "first\n[nanobanana]\nlast")
+            self.assertEqual(env_config.get_provider_config("nanobanana")["ILLUSTRATOR_RESOLUTION"], "2K")
+
+    def test_expected_group_layout_uses_backend_specific_defaults(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(
+            "#值为nanobanana或者nebula\nILLUSTRATOR_IMAGE_PROVIDER=nanobanana\n\n"
+            "[nanobanana]\nNEBULA_NANOBANANA_API_KEY=banana-test\n"
+            "NEBULA_NANOBANANA_MODEL=gemini-3.1-flash-image\n"
+            "ILLUSTRATOR_SINGLE_RATIO=16:9\nILLUSTRATOR_BATCH_RATIO=16:9\nILLUSTRATOR_RESOLUTION=2K\n\n"
+            "[image2-4k]\nNEBULA_API_KEY=4k-test\nNEBULA_MODEL=gpt-image-2-4k\n"
+            "NEBULA_SIZE=3840x2160\nNEBULA_QUALITY=high\n", encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
+            env_config.find_and_load_env()
+            for provider, resolution in ((None, "2K"), ("nebula", "4K"), ("nanobanana", "2K")):
+                for batch in (False, True):
+                    args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
+                    image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
+                    self.assertEqual((args.ratio, args.resolution), ("16:9", resolution))
+            with patch.dict(os.environ, {"ILLUSTRATOR_IMAGE_PROVIDER": "nebula"}):
+                args = SimpleNamespace(provider=None, ratio=None, resolution=None)
+                image_api.resolve_options(argparse.ArgumentParser(), args)
+                self.assertEqual((args.provider, args.resolution), ("nebula", "4K"))
+
+    def test_invalid_group_fails_without_exposing_values(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text("[typo]\nSECRET=test-secret\n", encoding="utf-8")
+        with patch.object(Path, "home", return_value=self.home):
+            with self.assertRaises(ValueError) as caught:
+                env_config.find_and_load_env()
+        self.assertNotIn("test-secret", str(caught.exception))
 
     def test_both_entrypoints_from_another_working_directory(self):
         self.config.parent.mkdir(parents=True)

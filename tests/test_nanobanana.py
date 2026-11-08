@@ -16,12 +16,16 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import image_api
+import env_config
 import generate_single_image
 import generate_illustrations
 
 
 class NanobananaTests(unittest.TestCase):
     def setUp(self):
+        sections = patch.object(env_config, "_sections", {})
+        sections.start()
+        self.addCleanup(sections.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.output = Path(self.temp.name) / "images/result.png"
