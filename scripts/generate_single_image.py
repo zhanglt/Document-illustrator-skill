@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Document Illustrator - 单图片生成工具
-由 Claude 负责文档分析和内容归纳，此脚本只负责调用 Gemini API 生成图片
+由助手负责文档分析和内容归纳，此脚本调用 Gemini 或 Nebula API 生成图片
 """
 
 import os
@@ -9,6 +9,7 @@ import sys
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
+from image_api import add_provider_argument, generate_nebula, get_provider, resolve_options, validate_options
 
 
 def find_and_load_env():
@@ -77,9 +78,9 @@ def get_image_dimensions(aspect_ratio, resolution):
     return dimensions[aspect_ratio][resolution]
 
 
-def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9", resolution="2K", is_cover=False):
+def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9", resolution="2K", is_cover=False, provider=None):
     """
-    调用 Gemini API 生成单张配图
+    调用所选 API 生成单张配图
 
     参数：
     - title: 图片标题
@@ -92,21 +93,6 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
 
     返回：成功返回图片路径，失败返回 None
     """
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError:
-        print("错误: 未安装 google-genai 库", file=sys.stderr)
-        print("请运行: pip install google-genai", file=sys.stderr)
-        sys.exit(1)
-
-    # 获取 API 密钥
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("错误: 未设置 GEMINI_API_KEY 环境变量", file=sys.stderr)
-        print("请在 .env 文件中设置: GEMINI_API_KEY=your-api-key", file=sys.stderr)
-        sys.exit(1)
-
     # 组合提示词
     if is_cover:
         # 封面图的提示词，强调概括性和引导性
@@ -137,7 +123,19 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
 """
 
     try:
-        # 调用 API
+        provider = get_provider(provider)
+        validate_options(provider, aspect_ratio, resolution)
+        if provider == "nebula":
+            return generate_nebula(full_prompt, output_path)
+
+        from google import genai
+        from google.genai import types
+
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("请设置 GEMINI_API_KEY")
+
+        # 调用 Gemini API
         client = genai.Client(api_key=api_key)
 
         response = client.models.generate_content(
@@ -213,7 +211,9 @@ def main():
     --cover
 
 环境变量:
-  GEMINI_API_KEY: Google AI API 密钥（必需）
+  GEMINI_API_KEY: Gemini 后端密钥
+  NEBULA_API_KEY: Nebula image2-4k 分组密钥
+  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini 或 nebula
 """
     )
 
@@ -230,8 +230,8 @@ def main():
     parser.add_argument(
         '--resolution',
         choices=['2K', '4K'],
-        default='2K',
-        help='分辨率（默认: 2K）'
+        default=None,
+        help='分辨率（Gemini 默认 2K；Nebula 默认且仅支持 4K）'
     )
     parser.add_argument(
         '--cover',
@@ -239,7 +239,9 @@ def main():
         help='标记为封面图（会使用不同的提示词策略）'
     )
 
+    add_provider_argument(parser)
     args = parser.parse_args()
+    resolve_options(parser, args, args.ratio)
 
     # 读取风格提示词
     style_file_path = Path(args.style_file)
@@ -268,7 +270,8 @@ def main():
         output_path=args.output,
         aspect_ratio=args.ratio,
         resolution=args.resolution,
-        is_cover=args.cover
+        is_cover=args.cover,
+        provider=args.provider
     )
 
     if result_path:

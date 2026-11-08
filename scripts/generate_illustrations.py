@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Document Illustrator - 为文档生成配图
-基于文档内容和风格提示词，使用 Gemini AI 生成高质量配图
+基于文档内容和风格提示词，使用 Gemini 或 Nebula API 生成配图
 """
 
 import os
@@ -10,6 +10,7 @@ import re
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
+from image_api import add_provider_argument, resolve_options
 
 
 def find_and_load_env():
@@ -452,68 +453,15 @@ def extract_core_prompt(style_file_path):
     return '\n'.join(filtered_lines).strip()
 
 
-def generate_illustration(section_title, section_content, style_prompt, output_dir, index, resolution='2K'):
-    """
-    调用 Gemini API 生成单张配图
+def generate_illustration(section_title, section_content, style_prompt, output_dir, index,
+                          resolution='2K', provider=None):
+    from generate_single_image import generate_image
 
-    参数：
-    - section_title: 小节标题
-    - section_content: 小节内容
-    - style_prompt: 风格提示词
-    - output_dir: 输出目录
-    - index: 图片序号
-    - resolution: 图片分辨率（'2K' 或 '4K'）
-
-    返回：生成的图片路径
-    """
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError:
-        print("错误: 未安装 google-genai 库", file=sys.stderr)
-        print("请运行: pip install google-genai", file=sys.stderr)
-        sys.exit(1)
-
-    # 获取 API 密钥
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("错误: 未设置 GEMINI_API_KEY 环境变量", file=sys.stderr)
-        print("请在 .env 文件中设置: GEMINI_API_KEY=your-api-key", file=sys.stderr)
-        sys.exit(1)
-
-    # 组合提示词
-    full_prompt = f"{style_prompt}\n\n根据以下内容生成配图：\n\n标题：{section_title}\n\n内容：{section_content}"
-
-    try:
-        # 调用 API
-        client = genai.Client(api_key=api_key)
-
-        response = client.models.generate_content(
-            model="gemini-3-pro-image-preview",  # Nano Banana Pro
-            contents=full_prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=['IMAGE'],
-                image_config=types.ImageConfig(
-                    aspect_ratio="16:9",
-                    image_size=resolution
-                )
-            )
-        )
-
-        # 保存图片
-        for part in response.parts:
-            if part.inline_data is not None:
-                image = part.as_image()
-                image_path = os.path.join(output_dir, f"illustration-{index:02d}.png")
-                image.save(image_path)
-                return image_path
-
-        print(f"警告: 第 {index} 张图片生成失败 - 未收到图片数据", file=sys.stderr)
-        return None
-
-    except Exception as e:
-        print(f"错误: 第 {index} 张图片生成失败 - {e}", file=sys.stderr)
-        return None
+    image_path = os.path.join(output_dir, f"illustration-{index:02d}.png")
+    return generate_image(
+        section_title, section_content, style_prompt, image_path,
+        aspect_ratio="16:9", resolution=resolution, provider=provider,
+    )
 
 
 def main():
@@ -528,7 +476,9 @@ def main():
   python generate_illustrations.py document.md --output /custom/output
 
 环境变量:
-  GEMINI_API_KEY: Google AI API 密钥（必需）
+  GEMINI_API_KEY: Gemini 后端密钥
+  NEBULA_API_KEY: Nebula image2-4k 分组密钥
+  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini 或 nebula
 """
     )
 
@@ -541,8 +491,8 @@ def main():
     parser.add_argument(
         '--resolution',
         choices=['2K', '4K'],
-        default='2K',
-        help='图片分辨率（默认: 2K）'
+        default=None,
+        help='图片分辨率（Gemini 默认 2K；Nebula 默认且仅支持 4K）'
     )
     parser.add_argument(
         '--style',
@@ -555,7 +505,9 @@ def main():
         help='标题层级（h2: 二级标题, h3: 三级标题, h4: 四级标题）'
     )
 
+    add_provider_argument(parser)
     args = parser.parse_args()
+    resolve_options(parser, args)
 
     print("=" * 60)
     print("Document Illustrator - 文档配图生成器")
@@ -691,7 +643,8 @@ def main():
             style_prompt,
             output_dir,
             i,
-            args.resolution
+            args.resolution,
+            provider=args.provider
         )
 
         if image_path:
@@ -712,6 +665,8 @@ def main():
         print(f"失败: {failed} 张")
     print(f"\n所有配图已保存到: {output_dir}")
     print()
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

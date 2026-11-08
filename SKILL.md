@@ -11,7 +11,6 @@ allowed-tools:
   - Bash(python:*)
   - Glob
   - AskUserQuestion
-model: claude-sonnet-4-5-20250514
 ---
 
 # Document Illustrator Skill
@@ -280,6 +279,9 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 
 ### 图片规格
 
+以下比例和分辨率适用于 Gemini；Nebula image2-4k 仅支持 16:9、3840x2160。
+用户选择 Nebula 时，直接使用 4K；如用户要求 2K 或竖图，先说明限制并确定受支持方案。
+
 | 比例 | 分辨率 | 适用场景 |
 |------|--------|----------|
 | 16:9 | 2560x1440 (2K) | 演示文稿、横屏展示 |
@@ -291,9 +293,33 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 
 ### API 调用
 
-- **模型**：Gemini 3.1 Flash Image (Nano Banana 2) 
+- **Gemini 模型**：`gemini-3-pro-image-preview`（脚本当前默认值）
+- **Nebula 模型**：`gpt-image-2-4k`，使用 image2-4k 分组令牌
 - **成本**：每张图片 = 1 次 API 调用
-- **速度**：平均 10-20 秒/张
+- **速度**：取决于后端负载；Nebula 4K 请求超时为 1800 秒
+
+### 后端选择与 Nebula 调用
+
+两个脚本支持 `--provider gemini|nebula`。不指定时读取 `ILLUSTRATOR_IMAGE_PROVIDER`，
+未配置时使用 Gemini。用户明确指定 Nebula 时，传入 `--provider nebula`；不要改用其他服务。
+配置技能包根目录 `.env` 中的 `NEBULA_API_KEY`，或使用同名环境变量；令牌须属于 image2-4k 分组。
+Nebula 无需 Gemini 密钥或 Google SDK，仍需要 `Pillow` 和 `python-dotenv`。
+
+```powershell
+python -X utf8 scripts/generate_single_image.py --provider nebula --title "主题" --content "已确认的配图内容" --style-file styles/ticket.md --output output/image-01.png --resolution 4K
+python -X utf8 scripts/generate_illustrations.py article.md --provider nebula --style ticket --level h2 --resolution 4K
+```
+
+脚本调用 `POST https://img-api.apinebula.ai/v1/images/generations`，固定使用
+`gpt-image-2-4k`、`3840x2160`、`quality=high`、`response_format=url`。
+优先读取 URL，兼容 Base64；保存前验证真实像素，将服务端 JPEG 转为本地扩展名对应的格式。
+接口响应保存为 `<图片文件名>.response.json`，下载失败时先复用其中的临时链接恢复下载。
+POST 超时后任务状态可能未知，不自动重发；先确认服务端状态，避免重复计费。
+HTTP 403 或连接尚未建立时会尝试 `http://127.0.0.1:81` 代理。
+当前仅接入文本生图；参考图编辑未实现。
+
+完整配置说明与离线测试命令见 [README.md](README.md#使用-nebula-image2-4k-生图)，
+接口参数以 [官方文档](https://docs.apinebula.ai/docs/advanced/image/image2-4k) 为依据。
 
 ### 环境要求
 
@@ -303,8 +329,9 @@ pip install google-genai pillow python-dotenv
 ```
 
 **API 密钥**：
-- 在 `~/.codex/skills/document-illustrator/.env` 中配置
-- 或设置环境变量 `GEMINI_API_KEY`
+- 优先在本技能包根目录 `.env` 中配置；其次检查当前工作目录和 `~/.claude/skills/document-illustrator/.env`
+- 首个找到的 `.env` 覆盖同名环境变量；也可只设置环境变量
+- Gemini 使用 `GEMINI_API_KEY`，Nebula 使用 `NEBULA_API_KEY`
 
 ## 📊 内容归纳原则
 
@@ -344,7 +371,7 @@ Error: Invalid API key
 ```
 
 **解决方案**：
-1. 检查 `.env` 文件中的 `GEMINI_API_KEY`
+1. 检查 `.env` 中对应后端的 `GEMINI_API_KEY` 或 `NEBULA_API_KEY`；Nebula 同时检查令牌分组
 2. 确保 API 密钥有效且未过期
 3. 获取新密钥：https://makersuite.google.com/app/apikey
 

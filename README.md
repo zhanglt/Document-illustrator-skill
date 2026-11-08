@@ -8,14 +8,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-**Document Illustrator** 是一个 Claude Code Skill，它能智能理解文档内容，自动归纳核心要点，并为每个主题生成专业配图。无需依赖特定文档格式，AI 会理解内容并生成符合你选择风格的高质量图片。
+**Document Illustrator** 是一个可供 Codex / Claude Code 使用的文档配图技能包，它能理解文档内容、归纳核心要点，并为每个主题生成配图。本仓库增加了 Nebula image2-4k 生图接口，同时保留 Gemini 后端。
 
 ## ✨ 核心特性
 
 - **🤖 AI 智能归纳**：自动理解文档内容，智能提取核心主题，无需依赖标题格式
 - **📝 格式无关**：支持任何格式的文档（Markdown、纯文本、PDF 等）
 - **🎨 三种风格**：渐变玻璃卡片、票据风格、矢量插画，满足不同场景需求
-- **📐 灵活比例**：支持 16:9（横屏）和 3:4（竖屏）两种图片比例
+- **📐 图片规格**：Gemini 支持 16:9 和 3:4；Nebula image2-4k 支持 16:9、3840x2160
+- **生图后端可选**：通过 `--provider gemini|nebula` 切换，支持配置默认后端
 - **🖼️ 封面图可选**：可生成概括全文的封面图作为系列配图的引导
 - **✅ 内容完整**：展示归纳结果供你确认，确保所有重要信息都被包含
 
@@ -24,7 +25,7 @@
 ### 使用 npx 安装（推荐）
 
 ```bash
-npx skills add https://github.com/op7418/Document-illustrator-skill
+npx skills add https://github.com/zhanglt/Document-illustrator-skill
 ```
 
 ### 手动安装
@@ -33,7 +34,7 @@ npx skills add https://github.com/op7418/Document-illustrator-skill
 
 ```bash
 cd ~/.claude/skills/
-git clone https://github.com/op7418/Document-illustrator-skill.git
+git clone https://github.com/zhanglt/Document-illustrator-skill.git document-illustrator
 ```
 
 2. 配置 API 密钥（见下方"配置说明"部分）
@@ -105,34 +106,79 @@ Claude 会引导你完成整个配图生成流程。
 
 ## 📦 安装和配置
 
+### 使用 Nebula image2-4k 生图
+
+两个脚本均支持 `--provider gemini` 和 `--provider nebula`。未指定时读取
+`ILLUSTRATOR_IMAGE_PROVIDER`，未配置则使用原有 Gemini 后端。
+
+在本技能包根目录的 `.env` 中配置（不要提交真实密钥）：
+
+```dotenv
+NEBULA_API_KEY=your-image2-4k-api-key
+ILLUSTRATOR_IMAGE_PROVIDER=nebula
+```
+
+必须在 Nebula 创建属于 **image2-4k 分组**的令牌，并复制完整 API Key。
+脚本沿用现有 `.env` 加载顺序：技能包根目录、当前工作目录、
+`~/.claude/skills/document-illustrator/.env`，找到首个文件后加载；文件中的值覆盖同名环境变量。
+也可只设置环境变量。命令行 `--provider` 优先于默认后端配置。
+
+```powershell
+# 单图；--cover 可用于生成封面
+python -X utf8 scripts/generate_single_image.py --provider nebula --title "智慧水利" --content "监测感知、数字孪生、预警调度" --style-file styles/gradient-glass.md --output output/cover.png --cover
+
+# 按 Markdown 二级标题批量生成
+python -X utf8 scripts/generate_illustrations.py article.md --provider nebula --style ticket --level h2 --output output
+```
+
+接口依据：[Nebula image2-4k 官方文档](https://docs.apinebula.ai/docs/advanced/image/image2-4k)。
+请求为 `POST https://img-api.apinebula.ai/v1/images/generations`，固定使用
+`model=gpt-image-2-4k`、`size=3840x2160`、`quality=high`、`response_format=url`，
+超时为 1800 秒。该分组仅支持 **16:9、4K**，选择 Nebula 时默认使用 4K；
+显式传入 `--resolution 2K` 或单图 `--ratio 3:4` 会在请求前报错。
+Gemini 保留原有比例，默认 2K。
+
+优先下载 `data[0].url`，无 URL 时读取 `data[0].b64_json`；下载请求不携带 API 密钥。
+保存前验证实际像素为 `3840x2160`，服务端 JPEG 会按本地文件扩展名重新编码。
+接口成功响应另存为 `<图片文件名>.response.json`，用于下载失败后的排查和恢复，可能含图片数据或临时链接，请妥善保存。
+下载失败时先从缓存响应中的 URL 恢复下载；不要直接重新生图，以免重复计费。
+此接入提供文本生图，暂未实现文档中的参考图编辑接口。
+
+网络请求遭遇 HTTP 403 或连接未建立时，使用 `http://127.0.0.1:81` 代理重试。
+生图 POST 超时或连接中断后不自动重发，应先检查服务端任务状态。
+Nebula 后端使用 Python 标准库、`Pillow` 和 `python-dotenv`；无需额外安装 OpenAI SDK。
+
+离线回归测试（不请求真实 API）：
+
+```powershell
+python -X utf8 -m unittest discover -s tests -v
+```
+
 ### 步骤 1: 安装 Skill
 
 **使用 npx（推荐）**：
 
 ```bash
-npx skills add https://github.com/op7418/Document-illustrator-skill
+npx skills add https://github.com/zhanglt/Document-illustrator-skill
 ```
 
 **手动安装**：
 
 ```bash
 cd ~/.claude/skills/
-git clone https://github.com/op7418/Document-illustrator-skill.git
+git clone https://github.com/zhanglt/Document-illustrator-skill.git document-illustrator
 cd document-illustrator
 ```
 
 ### 步骤 2: 配置 API 密钥
 
+以下步骤配置 Gemini 后端。使用 Nebula 时，按本节前面的“使用 Nebula image2-4k 生图”配置 `NEBULA_API_KEY` 即可，无需 Gemini 密钥。
+
 1. 获取 Gemini API 密钥：[Google AI Studio](https://makersuite.google.com/app/apikey)
 
 2. 在 Skill 根目录创建 `.env` 文件：
 
-```bash
-cd ~/.claude/skills/document-illustrator
-echo "GEMINI_API_KEY=your-api-key-here" > .env
-```
-
-或直接编辑 `.env` 文件：
+在实际安装目录中，用文本编辑器创建 `.env`，采用 UTF-8 无 BOM 编码：
 
 ```env
 GEMINI_API_KEY=your-api-key-here
@@ -195,7 +241,7 @@ python3 scripts/generate_single_image.py --help
    - 可以要求调整归纳结果
 
 5. **生成配图**
-   - 确认后，自动调用 Gemini API 生成图片
+   - 确认后，调用所选 Gemini 或 Nebula API 生成图片
    - 图片保存到文档所在目录的 `images/` 文件夹
 
 **完整示例**：
@@ -318,7 +364,7 @@ python3 scripts/generate_single_image.py \
     ↓
 ✅ 用户确认内容分配
     ↓
-🎨 调用 Gemini API 生成图片
+🎨 调用所选生图 API 生成图片
     ↓
 💾 保存到本地目录
 ```
@@ -432,10 +478,10 @@ document-illustrator/
 ### Q: API 密钥无效怎么办？
 
 **A**: 请检查以下几点：
-1. 确认 `.env` 文件中的 `GEMINI_API_KEY` 拼写正确
+1. 确认所选后端的密钥变量正确：Gemini 使用 `GEMINI_API_KEY`，Nebula 使用 `NEBULA_API_KEY`
 2. 确保 API 密钥有效且未过期
 3. 检查 API 密钥是否有足够的配额
-4. 重新获取密钥：[Google AI Studio](https://makersuite.google.com/app/apikey)
+4. Gemini 可在 [Google AI Studio](https://makersuite.google.com/app/apikey) 获取密钥；Nebula 须在平台创建 image2-4k 分组令牌
 
 ### Q: 生成的图片不符合预期怎么办？
 
@@ -447,11 +493,12 @@ document-illustrator/
 
 ### Q: 如何调整图片质量？
 
-**A**: 使用 `--resolution` 参数：
+**A**: Gemini 使用 `--resolution` 参数：
 - `2K`（默认）：16:9 为 2560x1440，3:4 为 1920x2560
 - `4K`：16:9 为 3840x2160，3:4 为 2880x3840
 
-注意：4K 图片生成时间更长，API 成本可能更高。
+Nebula image2-4k 仅支持 16:9、4K，选择该后端时默认使用 4K；不支持竖图或 2K。
+4K 图片生成时间可能更长，费用以对应平台实际计费为准。
 
 ### Q: 支持批量处理多个文档吗？
 
@@ -459,12 +506,12 @@ document-illustrator/
 
 ### Q: 成本估算？
 
-**A**: 每张图片需要调用一次 Gemini API：
+**A**: 每张图片需要调用一次所选后端的生图 API：
 - 无封面 + 3 张：3 次调用
 - 有封面 + 5 张：6 次调用
 - 有封面 + 10 张：11 次调用
 
-具体成本取决于 Google AI 的定价策略，请查看 [Gemini API 定价](https://ai.google.dev/pricing)。
+Gemini 费用查看 [Gemini API 定价](https://ai.google.dev/pricing)；Nebula 费用以平台 image2-4k 分组的实际计费为准。
 
 ### Q: 为什么有时图片生成失败？
 
@@ -478,12 +525,12 @@ document-illustrator/
 
 | 项目 | 说明 |
 |------|------|
-| **AI 模型** | gemini-3-pro-image-preview (Nano Banana Pro) |
+| **AI 模型** | Gemini：gemini-3-pro-image-preview；Nebula：gpt-image-2-4k |
 | **图片格式** | PNG |
-| **16:9 分辨率** | 2K (2560x1440) / 4K (3840x2160) |
-| **3:4 分辨率** | 2K (1920x2560) / 4K (2880x3840) |
+| **16:9 分辨率** | Gemini：2K / 4K；Nebula：仅 3840x2160 |
+| **3:4 分辨率** | 仅 Gemini：2K (1920x2560) / 4K (2880x3840) |
 | **支持文档格式** | Markdown, 纯文本, PDF 等（任何 Claude 可读的格式） |
-| **平均生成时间** | 10-20 秒/张 |
+| **生成时间** | 依后端负载而定；Nebula 4K 使用 1800 秒请求超时 |
 | **Python 版本** | 3.8+ |
 | **主要依赖** | google-genai, pillow, python-dotenv |
 
