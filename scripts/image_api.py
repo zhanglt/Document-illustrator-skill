@@ -1,9 +1,10 @@
-"""Nebula image2-4k 请求与图片保存。"""
+"""Nebula image2-4k、nanobanana 请求与图片保存。"""
 
 import base64
 import io
 import json
 import os
+import re
 import socket
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -25,19 +26,23 @@ class NoApiRedirect(HTTPRedirectHandler):
 
 def get_provider(provider=None):
     provider = provider or os.environ.get("ILLUSTRATOR_IMAGE_PROVIDER", "gemini")
-    if provider not in ("gemini", "nebula"):
-        raise ValueError("生图后端必须为 gemini 或 nebula")
+    if provider not in ("gemini", "nebula", "nanobanana"):
+        raise ValueError("生图后端必须为 gemini、nebula 或 nanobanana")
     return provider
 
 
 def validate_options(provider, aspect_ratio, resolution):
+    if aspect_ratio not in ("16:9", "3:4") or resolution not in ("1K", "2K", "4K"):
+        raise ValueError("不支持的图片比例或分辨率")
+    if provider == "gemini" and resolution == "1K":
+        raise ValueError("现有 Gemini 后端仅支持 2K、4K；1K 请使用 nanobanana")
     if provider == "nebula" and (aspect_ratio != "16:9" or resolution != "4K"):
         raise ValueError("Nebula image2-4k 仅支持 --ratio 16:9 --resolution 4K")
 
 
 def add_provider_argument(parser):
     parser.add_argument(
-        "--provider", choices=["gemini", "nebula"],
+        "--provider", choices=["gemini", "nebula", "nanobanana"],
         help="生图后端，默认读取 ILLUSTRATOR_IMAGE_PROVIDER，未配置时为 gemini",
     )
 
@@ -81,6 +86,61 @@ def read_request(request, timeout, limit):
         raise RuntimeError(f"代理请求返回 HTTP {exc.code}") from None
     except URLError:
         raise RuntimeError("代理连接失败；请检查 http://127.0.0.1:81") from None
+
+
+def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K"):
+    """使用 Gemini 原生格式生图，不持久化含完整 Base64 的响应。"""
+    validate_options("nanobanana", aspect_ratio, resolution)
+    api_key = os.environ.get("NEBULA_NANOBANANA_API_KEY")
+    if not api_key:
+        raise ValueError("请设置 NEBULA_NANOBANANA_API_KEY，令牌必须属于 nanobanana 分组")
+    model = os.environ.get("NEBULA_NANOBANANA_MODEL", "gemini-3.1-flash-image")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", model):
+        raise ValueError("NEBULA_NANOBANANA_MODEL 必须为有效模型名称")
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseModalities": ["IMAGE"],
+            "imageConfig": {"aspectRatio": aspect_ratio, "imageSize": resolution},
+        },
+    }
+    request = Request(
+        f"https://img-api.apinebula.ai/v1beta/models/{model}:generateContent",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    response = json.loads(read_request(request, timeout=1800, limit=80 * 1024 * 1024))
+    if not isinstance(response, dict):
+        raise ValueError("nanobanana 响应必须为 JSON 对象")
+    candidates = response.get("candidates")
+    if not isinstance(candidates, list) or not candidates or not isinstance(candidates[0], dict):
+        raise ValueError("nanobanana 未返回图片候选；请检查模型可用性、额度或内容限制")
+    content = candidates[0].get("content")
+    parts = content.get("parts") if isinstance(content, dict) else None
+    if not isinstance(parts, list):
+        raise ValueError("nanobanana 响应缺少 content.parts 图片数据")
+    for part in parts:
+        if not isinstance(part, dict) or part.get("thought"):
+            continue
+        inline = part.get("inlineData")
+        if not isinstance(inline, dict) or not str(inline.get("mimeType", "")).startswith("image/"):
+            continue
+        encoded = inline.get("data")
+        if not isinstance(encoded, str) or not encoded:
+            raise ValueError("nanobanana 图片 Base64 数据为空或格式错误")
+        if len(encoded) > 4 * ((MAX_IMAGE_BYTES + 2) // 3):
+            raise ValueError("图片超过 50 MiB 限制")
+        image_bytes = base64.b64decode(encoded, validate=True)
+        if len(image_bytes) > MAX_IMAGE_BYTES:
+            raise ValueError("图片超过 50 MiB 限制")
+        output_path = Path(output_path)
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image.load()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            image.save(output_path)
+        return str(output_path)
+    raise ValueError("nanobanana 未返回 inlineData 图片；请检查模型或内容限制")
 
 
 def generate_nebula(prompt, output_path):

@@ -43,11 +43,13 @@ ENV/
 *.tmp
 *.temp
 .cache/
-
+images
+六张网_水网建设_增量简报_20261031.md
 # 测试覆盖率
 .coverage
 htmlcov/
 .pytest_cache/
+
 
 # 打包文件
 dist/

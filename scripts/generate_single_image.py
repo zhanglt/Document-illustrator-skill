@@ -9,7 +9,7 @@ import sys
 import argparse
 from pathlib import Path
 from env_config import find_and_load_env
-from image_api import add_provider_argument, generate_nebula, get_provider, resolve_options, validate_options
+from image_api import add_provider_argument, generate_nebula, generate_nanobanana, get_provider, resolve_options, validate_options
 
 
 
@@ -95,6 +95,8 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
         validate_options(provider, aspect_ratio, resolution)
         if provider == "nebula":
             return generate_nebula(full_prompt, output_path)
+        if provider == "nanobanana":
+            return generate_nanobanana(full_prompt, output_path, aspect_ratio, resolution)
 
         from google import genai
         from google.genai import types
@@ -181,7 +183,9 @@ def main():
 环境变量:
   GEMINI_API_KEY: Gemini 后端密钥
   NEBULA_API_KEY: Nebula image2-4k 分组密钥
-  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini 或 nebula
+  NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
+  NEBULA_NANOBANANA_MODEL: 模型名称，默认 gemini-3.1-flash-image
+  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、nebula 或 nanobanana
 """
     )
 
@@ -197,9 +201,9 @@ def main():
     )
     parser.add_argument(
         '--resolution',
-        choices=['2K', '4K'],
+        choices=['1K', '2K', '4K'],
         default=None,
-        help='分辨率（Gemini 默认 2K；Nebula 默认且仅支持 4K）'
+        help='分辨率（Gemini/nanobanana 默认 2K；nanobanana 可选 1K；Nebula 仅支持 4K）'
     )
     parser.add_argument(
         '--cover',
@@ -227,8 +231,11 @@ def main():
     print(f"  比例: {args.ratio}")
     print(f"  分辨率: {args.resolution}")
 
-    width, height = get_image_dimensions(args.ratio, args.resolution)
-    print(f"  尺寸: {width}x{height}")
+    if args.provider == "nanobanana":
+        print("  尺寸: 由所选模型决定，以实际输出图片为准")
+    else:
+        width, height = get_image_dimensions(args.ratio, args.resolution)
+        print(f"  尺寸: {width}x{height}")
 
     # 生成图片
     result_path = generate_image(

@@ -300,6 +300,28 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 
 ### 后端选择与 Nebula 调用
 
+#### nanobanana 分组
+
+用户指定 nanobanana 时，两个脚本均传入 `--provider nanobanana`。
+统一 `.env` 中使用专用 `NEBULA_NANOBANANA_API_KEY`（nanobanana 分组令牌），
+不复用 image2-4k 的密钥。`NEBULA_NANOBANANA_MODEL` 默认为 `gemini-3.1-flash-image`，
+可指定令牌支持的其他模型；`ILLUSTRATOR_IMAGE_PROVIDER=nanobanana` 可设为默认。
+单图支持现有 16:9、3:4，批量入口保持 16:9；可请求 1K、2K、4K，默认 2K，
+具体支持值及实际像素由所选模型决定，不套用 image2-4k 的 4K 横图限制。
+
+```powershell
+python -X utf8 scripts/generate_single_image.py --provider nanobanana --title "主题" --content "配图内容" --style-file styles/ticket.md --ratio 3:4 --resolution 2K --output output/banana.png
+python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanana --style ticket --level h2 --resolution 2K
+```
+
+调用 Gemini 原生 `POST /v1beta/models/{model}:generateContent`，从 `inlineData`
+解码并验证图片，不持久化完整 Base64 响应。不需要 Google SDK。
+当前接入仅支持文本生图；超时后不自动重发收费任务。
+详见 [README.md](README.md#使用-nebula-nanobanana-分组生图) 和
+[官方接口说明](https://docs.apinebula.ai/docs/advanced/image/nanobanana)。
+
+#### 原有 image2-4k 分组
+
 两个脚本支持 `--provider gemini|nebula`。不指定时读取 `ILLUSTRATOR_IMAGE_PROVIDER`，
 未配置时使用 Gemini。用户明确指定 Nebula 时，传入 `--provider nebula`；不要改用其他服务。
 在统一路径 `~/.agents/skills/document-illustrator/.env` 配置 `NEBULA_API_KEY`，或使用同名环境变量；令牌须属于 image2-4k 分组。
@@ -333,6 +355,7 @@ pip install google-genai pillow python-dotenv
 - Windows 对应 `%USERPROFILE%\.agents\skills\document-illustrator\.env`
 - 仅加载该文件，其值覆盖同名环境变量；文件不存在时仅使用现有环境变量，不搜索其他位置
 - Gemini 使用 `GEMINI_API_KEY`，Nebula 使用 `NEBULA_API_KEY`
+- nanobanana 分组使用 `NEBULA_NANOBANANA_API_KEY`；模型配置见上方分组说明
 
 ## 📊 内容归纳原则
 

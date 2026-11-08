@@ -16,7 +16,7 @@
 - **📝 格式无关**：支持任何格式的文档（Markdown、纯文本、PDF 等）
 - **🎨 三种风格**：渐变玻璃卡片、票据风格、矢量插画，满足不同场景需求
 - **📐 图片规格**：Gemini 支持 16:9 和 3:4；Nebula image2-4k 支持 16:9、3840x2160
-- **生图后端可选**：通过 `--provider gemini|nebula` 切换，支持配置默认后端
+- **生图后端可选**：通过 `--provider gemini|nebula|nanobanana` 切换，支持配置默认后端
 - **🖼️ 封面图可选**：可生成概括全文的封面图作为系列配图的引导
 - **✅ 内容完整**：展示归纳结果供你确认，确保所有重要信息都被包含
 
@@ -105,6 +105,45 @@ Claude 会引导你完成整个配图生成流程。
 - 品牌宣传
 
 ## 📦 安装和配置
+
+### 使用 Nebula nanobanana 分组生图
+
+单图和批量脚本均新增 `--provider nanobanana`，使用 Gemini 原生接口，
+与 `--provider nebula` 的 image2-4k 分组分别选择、分别配置密钥。
+在统一配置文件 `~/.agents/skills/document-illustrator/.env` 中添加：
+
+```dotenv
+NEBULA_NANOBANANA_API_KEY=your-nanobanana-group-api-key
+NEBULA_NANOBANANA_MODEL=gemini-3.1-flash-image
+# 可选：设为默认生图后端
+ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
+```
+
+令牌必须属于 **nanobanana 分组**；模型可用列表建议留空，或包含所选模型。
+此模式只读取 `NEBULA_NANOBANANA_API_KEY`，不复用 image2-4k 的 `NEBULA_API_KEY`。
+模型默认 `gemini-3.1-flash-image`，可配置为当前令牌支持的其他模型，例如
+`gemini-3-pro-image-preview`。模型可能调整，可通过 `GET https://img-api.apinebula.ai/v1/models`
+确认可用模型；脚本不会为此额外发起查询或自动切换模型。
+
+```powershell
+# 单图：支持现有 16:9、3:4 比例，可请求 1K、2K、4K，默认 2K
+python -X utf8 scripts/generate_single_image.py --provider nanobanana --title "智慧水利" --content "监测感知、预警调度" --style-file styles/ticket.md --ratio 3:4 --resolution 2K --output output/banana.png
+
+# 按 Markdown 二级标题批量生成，批量入口保持 16:9
+python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanana --style ticket --level h2 --resolution 2K --output output
+```
+
+请求为 `POST https://img-api.apinebula.ai/v1beta/models/{model}:generateContent`，
+使用 Bearer 认证，发送 `contents` 和 `generationConfig.imageConfig`，从
+`candidates[0].content.parts[].inlineData` 解码图片。保存前用 Pillow 验证图片，
+按输出扩展名编码；不记录完整 Base64 响应，也不强制套用 image2-4k 的固定像素限制。
+分辨率参数的实际支持情况、图片尺寸及比例以所选模型输出为准。
+此接入提供文本生图，暂不提供参考图编辑；无需 Google SDK 或新增依赖。
+请求超时为 1800 秒，复用现有代理与防重复提交逻辑：403 或明确未建立连接时尝试
+`http://127.0.0.1:81`；POST 超时或中断后不自动重发，须先核实任务状态。
+
+接口依据：[nanobanana 官方文档](https://docs.apinebula.ai/docs/advanced/image/nanobanana)。
+离线验证：`python -X utf8 -m unittest discover -s tests -v`。
 
 ### 使用 Nebula image2-4k 生图
 

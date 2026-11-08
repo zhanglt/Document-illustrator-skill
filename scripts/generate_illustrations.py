@@ -442,7 +442,9 @@ def main():
 环境变量:
   GEMINI_API_KEY: Gemini 后端密钥
   NEBULA_API_KEY: Nebula image2-4k 分组密钥
-  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini 或 nebula
+  NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
+  NEBULA_NANOBANANA_MODEL: 模型名称，默认 gemini-3.1-flash-image
+  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、nebula 或 nanobanana
 """
     )
 
@@ -454,9 +456,9 @@ def main():
     )
     parser.add_argument(
         '--resolution',
-        choices=['2K', '4K'],
+        choices=['1K', '2K', '4K'],
         default=None,
-        help='图片分辨率（Gemini 默认 2K；Nebula 默认且仅支持 4K）'
+        help='图片分辨率（Gemini/nanobanana 默认 2K；nanobanana 可选 1K；Nebula 仅支持 4K）'
     )
     parser.add_argument(
         '--style',
