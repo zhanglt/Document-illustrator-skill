@@ -129,7 +129,7 @@ ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
 # 单图：支持现有 16:9、3:4 比例，可请求 1K、2K、4K，默认 2K
 python -X utf8 scripts/generate_single_image.py --provider nanobanana --title "智慧水利" --content "监测感知、预警调度" --style-file styles/ticket.md --ratio 3:4 --resolution 2K --output output/banana.png
 
-# 按 Markdown 二级标题批量生成，批量入口保持 16:9
+# 按 Markdown 二级标题批量生成，比例读取 ILLUSTRATOR_BATCH_RATIO
 python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanana --style ticket --level h2 --resolution 2K --output output
 ```
 
@@ -144,6 +144,31 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 
 接口依据：[nanobanana 官方文档](https://docs.apinebula.ai/docs/advanced/image/nanobanana)。
 离线验证：`python -X utf8 -m unittest discover -s tests -v`。
+
+### 配置单图比例、批量比例与请求分辨率
+
+在统一 `.env` 中配置以下三项，适用于所有后端：
+
+```dotenv
+ILLUSTRATOR_SINGLE_RATIO=16:9
+ILLUSTRATOR_BATCH_RATIO=16:9
+ILLUSTRATOR_RESOLUTION=2K
+```
+
+两个比例均支持 `16:9`、`3:4`，分别控制单图、批量入口；请求分辨率支持
+`1K`、`2K`、`4K`，仍须满足所选后端限制。image2-4k 必须使用 `16:9`、`4K`，
+Gemini 官方模式仅支持原有 `2K`、`4K`，nanobanana 具体支持值以所选模型为准。
+配置与后端不兼容时，在请求前报错，不自动修改配置或切换服务。
+
+优先级：命令行 `--ratio` / `--resolution` > 统一 `.env` 中的同名配置项 >
+进程环境变量 > 内置默认值。未配置或值为空时，比例默认 `16:9`；
+分辨率按后端默认：Gemini/nanobanana 为 `2K`，image2-4k 为 `4K`。
+`.env` 中的值沿用现有规则，覆盖同名进程环境变量。
+
+```powershell
+# 临时覆盖批量配置，生成竖版图片
+python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanana --style ticket --level h2 --ratio 3:4 --resolution 4K --output output
+```
 
 ### 使用 Nebula image2-4k 生图
 

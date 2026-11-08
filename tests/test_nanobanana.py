@@ -31,6 +31,8 @@ class NanobananaTests(unittest.TestCase):
         env = patch.dict(os.environ, {
             "NEBULA_NANOBANANA_API_KEY": "banana-test-key",
             "NEBULA_NANOBANANA_MODEL": "gemini-3.1-flash-image",
+            "ILLUSTRATOR_SINGLE_RATIO": "", "ILLUSTRATOR_BATCH_RATIO": "",
+            "ILLUSTRATOR_RESOLUTION": "",
         })
         env.start()
         self.addCleanup(env.stop)
@@ -101,6 +103,10 @@ class NanobananaTests(unittest.TestCase):
                 "title", "body", "style", self.temp.name, 1, "4K", "nanobanana"
             ), "done")
             self.assertEqual(generate.call_args.args[2:], ("16:9", "4K"))
+            generate_illustrations.generate_illustration(
+                "title", "body", "style", self.temp.name, 2, "2K", "nanobanana", aspect_ratio="3:4"
+            )
+            self.assertEqual(generate.call_args.args[2:], ("3:4", "2K"))
 
 
 if __name__ == "__main__":

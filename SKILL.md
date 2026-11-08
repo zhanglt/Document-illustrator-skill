@@ -306,8 +306,14 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 统一 `.env` 中使用专用 `NEBULA_NANOBANANA_API_KEY`（nanobanana 分组令牌），
 不复用 image2-4k 的密钥。`NEBULA_NANOBANANA_MODEL` 默认为 `gemini-3.1-flash-image`，
 可指定令牌支持的其他模型；`ILLUSTRATOR_IMAGE_PROVIDER=nanobanana` 可设为默认。
-单图支持现有 16:9、3:4，批量入口保持 16:9；可请求 1K、2K、4K，默认 2K，
+单图、批量均支持 16:9、3:4；可请求 1K、2K、4K，默认 2K，
 具体支持值及实际像素由所选模型决定，不套用 image2-4k 的 4K 横图限制。
+
+统一 `.env` 使用 `ILLUSTRATOR_SINGLE_RATIO` 设置单图默认比例，
+`ILLUSTRATOR_BATCH_RATIO` 设置批量默认比例，`ILLUSTRATOR_RESOLUTION` 设置默认请求分辨率。
+两个入口均支持 `--ratio`、`--resolution` 覆盖配置。不配置或值为空时，比例为 16:9，
+分辨率使用后端默认值（Gemini/nanobanana 为 2K，image2-4k 为 4K）。
+这些设置适用于所有后端；与后端限制冲突时，请求前报错，须调整配置或显式覆盖。
 
 ```powershell
 python -X utf8 scripts/generate_single_image.py --provider nanobanana --title "主题" --content "配图内容" --style-file styles/ticket.md --ratio 3:4 --resolution 2K --output output/banana.png

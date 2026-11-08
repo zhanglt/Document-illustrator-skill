@@ -418,13 +418,13 @@ def extract_core_prompt(style_file_path):
 
 
 def generate_illustration(section_title, section_content, style_prompt, output_dir, index,
-                          resolution='2K', provider=None):
+                          resolution='2K', provider=None, aspect_ratio="16:9"):
     from generate_single_image import generate_image
 
     image_path = os.path.join(output_dir, f"illustration-{index:02d}.png")
     return generate_image(
         section_title, section_content, style_prompt, image_path,
-        aspect_ratio="16:9", resolution=resolution, provider=provider,
+        aspect_ratio=aspect_ratio, resolution=resolution, provider=provider,
     )
 
 
@@ -445,10 +445,16 @@ def main():
   NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
   NEBULA_NANOBANANA_MODEL: 模型名称，默认 gemini-3.1-flash-image
   ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、nebula 或 nanobanana
+  ILLUSTRATOR_BATCH_RATIO: 批量默认比例，未配置时为 16:9
+  ILLUSTRATOR_RESOLUTION: 默认请求分辨率，命令行参数优先
 """
     )
 
     parser.add_argument('document', help='文档路径')
+    parser.add_argument(
+        '--ratio', choices=['16:9', '3:4'], default=None,
+        help='宽高比（默认读取 ILLUSTRATOR_BATCH_RATIO，未配置时为 16:9）'
+    )
     parser.add_argument(
         '--output',
         default=None,
@@ -458,7 +464,7 @@ def main():
         '--resolution',
         choices=['1K', '2K', '4K'],
         default=None,
-        help='图片分辨率（Gemini/nanobanana 默认 2K；nanobanana 可选 1K；Nebula 仅支持 4K）'
+        help='分辨率（默认读取 ILLUSTRATOR_RESOLUTION；未配置时 Gemini/nanobanana 为 2K，Nebula 为 4K）'
     )
     parser.add_argument(
         '--style',
@@ -473,7 +479,7 @@ def main():
 
     add_provider_argument(parser)
     args = parser.parse_args()
-    resolve_options(parser, args)
+    resolve_options(parser, args, batch=True)
 
     print("=" * 60)
     print("Document Illustrator - 文档配图生成器")
@@ -610,7 +616,8 @@ def main():
             output_dir,
             i,
             args.resolution,
-            provider=args.provider
+            provider=args.provider,
+            aspect_ratio=args.ratio
         )
 
         if image_path:

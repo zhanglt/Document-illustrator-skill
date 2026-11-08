@@ -35,6 +35,8 @@ class NebulaTests(unittest.TestCase):
         self.output = Path(self.temp.name) / "images" / "result.png"
         env = patch.dict(os.environ, {
             "NEBULA_API_KEY": "test-key", "ILLUSTRATOR_IMAGE_PROVIDER": "gemini",
+            "ILLUSTRATOR_SINGLE_RATIO": "", "ILLUSTRATOR_BATCH_RATIO": "",
+            "ILLUSTRATOR_RESOLUTION": "",
         })
         env.start()
         self.addCleanup(env.stop)

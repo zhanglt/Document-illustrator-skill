@@ -186,6 +186,8 @@ def main():
   NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
   NEBULA_NANOBANANA_MODEL: 模型名称，默认 gemini-3.1-flash-image
   ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、nebula 或 nanobanana
+  ILLUSTRATOR_SINGLE_RATIO: 单图默认比例，未配置时为 16:9
+  ILLUSTRATOR_RESOLUTION: 默认请求分辨率，命令行参数优先
 """
     )
 
@@ -196,14 +198,14 @@ def main():
     parser.add_argument(
         '--ratio',
         choices=['16:9', '3:4'],
-        default='16:9',
-        help='宽高比（默认: 16:9）'
+        default=None,
+        help='宽高比（默认读取 ILLUSTRATOR_SINGLE_RATIO，未配置时为 16:9）'
     )
     parser.add_argument(
         '--resolution',
         choices=['1K', '2K', '4K'],
         default=None,
-        help='分辨率（Gemini/nanobanana 默认 2K；nanobanana 可选 1K；Nebula 仅支持 4K）'
+        help='分辨率（默认读取 ILLUSTRATOR_RESOLUTION；未配置时 Gemini/nanobanana 为 2K，Nebula 为 4K）'
     )
     parser.add_argument(
         '--cover',
@@ -213,7 +215,7 @@ def main():
 
     add_provider_argument(parser)
     args = parser.parse_args()
-    resolve_options(parser, args, args.ratio)
+    resolve_options(parser, args)
 
     # 读取风格提示词
     style_file_path = Path(args.style_file)

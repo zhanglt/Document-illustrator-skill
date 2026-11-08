@@ -47,13 +47,17 @@ def add_provider_argument(parser):
     )
 
 
-def resolve_options(parser, args, aspect_ratio="16:9"):
+def resolve_options(parser, args, aspect_ratio=None, batch=False):
+    ratio_key = "ILLUSTRATOR_BATCH_RATIO" if batch else "ILLUSTRATOR_SINGLE_RATIO"
     try:
         args.provider = get_provider(args.provider)
-        args.resolution = args.resolution or ("4K" if args.provider == "nebula" else "2K")
-        validate_options(args.provider, aspect_ratio, args.resolution)
+        args.ratio = aspect_ratio or getattr(args, "ratio", None) or os.environ.get(ratio_key) or "16:9"
+        args.resolution = args.resolution or os.environ.get("ILLUSTRATOR_RESOLUTION") or (
+            "4K" if args.provider == "nebula" else "2K"
+        )
+        validate_options(args.provider, args.ratio, args.resolution)
     except ValueError as exc:
-        parser.error(str(exc))
+        parser.error(f"{exc}；请检查 --ratio、--resolution 或 .env 中的 {ratio_key}、ILLUSTRATOR_RESOLUTION")
 
 
 def read_request(request, timeout, limit):
