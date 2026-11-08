@@ -8,43 +8,11 @@ import os
 import sys
 import argparse
 from pathlib import Path
-from dotenv import load_dotenv
+from env_config import find_and_load_env
 from image_api import add_provider_argument, generate_nebula, get_provider, resolve_options, validate_options
 
 
-def find_and_load_env():
-    """
-    智能查找并加载 .env 文件
-    优先级：
-    1. 当前脚本所在目录的上一级（Skill 根目录）
-    2. 当前工作目录
-    3. 用户主目录下的 .claude/skills/document-illustrator/
-    """
-    # 获取脚本所在目录的上一级（Skill 根目录）
-    skill_root = Path(__file__).parent.parent
-    env_path = skill_root / ".env"
 
-    if env_path.exists():
-        load_dotenv(env_path, override=True)
-        return True
-
-    # 尝试当前工作目录
-    if Path(".env").exists():
-        load_dotenv(".env", override=True)
-        return True
-
-    # 尝试 Claude Code Skill 标准位置
-    claude_skill_env = Path.home() / ".claude" / "skills" / "document-illustrator" / ".env"
-    if claude_skill_env.exists():
-        load_dotenv(claude_skill_env, override=True)
-        return True
-
-    # 如果都没找到，尝试默认加载
-    load_dotenv(override=True)
-    return False
-
-
-# 智能加载环境变量
 find_and_load_env()
 
 

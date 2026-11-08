@@ -111,7 +111,7 @@ Claude 会引导你完成整个配图生成流程。
 两个脚本均支持 `--provider gemini` 和 `--provider nebula`。未指定时读取
 `ILLUSTRATOR_IMAGE_PROVIDER`，未配置则使用原有 Gemini 后端。
 
-在本技能包根目录的 `.env` 中配置（不要提交真实密钥）：
+所有 Agent 统一在 `~/.agents/skills/document-illustrator/.env` 中配置（不要提交真实密钥）：
 
 ```dotenv
 NEBULA_API_KEY=your-image2-4k-api-key
@@ -119,9 +119,10 @@ ILLUSTRATOR_IMAGE_PROVIDER=nebula
 ```
 
 必须在 Nebula 创建属于 **image2-4k 分组**的令牌，并复制完整 API Key。
-脚本沿用现有 `.env` 加载顺序：技能包根目录、当前工作目录、
-`~/.claude/skills/document-illustrator/.env`，找到首个文件后加载；文件中的值覆盖同名环境变量。
-也可只设置环境变量。命令行 `--provider` 优先于默认后端配置。
+两个脚本只读取 `~/.agents/skills/document-illustrator/.env`，与 Codex、Claude 等 Agent
+及其安装位置、当前工作目录无关。Windows 对应 `%USERPROFILE%\.agents\skills\document-illustrator\.env`。
+文件中的值覆盖同名环境变量；文件不存在时仅使用现有环境变量，不搜索其他 `.env`。
+命令行 `--provider` 优先于默认后端配置。
 
 ```powershell
 # 单图；--cover 可用于生成封面
@@ -176,9 +177,9 @@ cd document-illustrator
 
 1. 获取 Gemini API 密钥：[Google AI Studio](https://makersuite.google.com/app/apikey)
 
-2. 在 Skill 根目录创建 `.env` 文件：
+2. 在 `~/.agents/skills/document-illustrator/.env` 创建配置文件：
 
-在实际安装目录中，用文本编辑器创建 `.env`，采用 UTF-8 无 BOM 编码：
+如父目录不存在，先创建；用文本编辑器创建该文件，采用 UTF-8 无 BOM 编码：
 
 ```env
 GEMINI_API_KEY=your-api-key-here
@@ -403,7 +404,7 @@ document-illustrator/
 ├── README.md                 # 项目说明文档（本文件）
 ├── LICENSE                   # MIT 许可证
 ├── SKILL.md                  # Skill 定义文件（供 Claude Code 使用）
-├── .env                      # API 密钥配置（需自行创建）
+├── .env                      # 仅当此目录为 ~/.agents/skills/document-illustrator 时在此配置
 ├── .gitignore                # Git 忽略规则
 ├── scripts/                  # Python 脚本目录
 │   ├── generate_illustrations.py    # 批量生成脚本（已废弃）

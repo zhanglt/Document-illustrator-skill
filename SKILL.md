@@ -302,7 +302,7 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 
 两个脚本支持 `--provider gemini|nebula`。不指定时读取 `ILLUSTRATOR_IMAGE_PROVIDER`，
 未配置时使用 Gemini。用户明确指定 Nebula 时，传入 `--provider nebula`；不要改用其他服务。
-配置技能包根目录 `.env` 中的 `NEBULA_API_KEY`，或使用同名环境变量；令牌须属于 image2-4k 分组。
+在统一路径 `~/.agents/skills/document-illustrator/.env` 配置 `NEBULA_API_KEY`，或使用同名环境变量；令牌须属于 image2-4k 分组。
 Nebula 无需 Gemini 密钥或 Google SDK，仍需要 `Pillow` 和 `python-dotenv`。
 
 ```powershell
@@ -329,8 +329,9 @@ pip install google-genai pillow python-dotenv
 ```
 
 **API 密钥**：
-- 优先在本技能包根目录 `.env` 中配置；其次检查当前工作目录和 `~/.claude/skills/document-illustrator/.env`
-- 首个找到的 `.env` 覆盖同名环境变量；也可只设置环境变量
+- Codex、Claude 等所有 Agent 统一读取 `~/.agents/skills/document-illustrator/.env`
+- Windows 对应 `%USERPROFILE%\.agents\skills\document-illustrator\.env`
+- 仅加载该文件，其值覆盖同名环境变量；文件不存在时仅使用现有环境变量，不搜索其他位置
 - Gemini 使用 `GEMINI_API_KEY`，Nebula 使用 `NEBULA_API_KEY`
 
 ## 📊 内容归纳原则
