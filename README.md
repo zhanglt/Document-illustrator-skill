@@ -463,7 +463,7 @@ python3 scripts/generate_single_image.py \
 
 ### 示例 1: 技术文章配图
 
-![技术文章示例](./examples/tech-article.png)
+![技术文章示例](./examples/tech-article.png.png)
 
 使用渐变玻璃卡片风格，16:9 比例，适合科技博客和演示文稿。
 
