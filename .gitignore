@@ -50,6 +50,7 @@ images_bak
 .coverage
 htmlcov/
 .pytest_cache/
+pptx
 
 
 # 打包文件
