@@ -63,6 +63,19 @@ class NanobananaTests(unittest.TestCase):
             self.assertEqual(image.size, (1376, 768))
         self.assertFalse(self.output.with_suffix(".png.response.json").exists())
 
+    def test_group_base_url(self):
+        section = {"nanobanana": {
+            "NEBULA_NANOBANANA_BASE_URL": "https://banana.example/",
+        }}
+        with patch.object(env_config, "_sections", section), patch.object(
+            image_api, "read_request", return_value=self.response([{"inlineData": self.inline}])
+        ) as read:
+            image_api.generate_nanobanana("test", self.output)
+        self.assertEqual(
+            read.call_args.args[0].full_url,
+            "https://banana.example/v1beta/models/gemini-3.1-flash-image:generateContent",
+        )
+
     def test_model_and_1k(self):
         with patch.dict(os.environ, {"NEBULA_NANOBANANA_MODEL": "gemini-3-pro-image-preview"}), patch.object(
             image_api, "read_request", return_value=self.response([{"inlineData": self.inline}])

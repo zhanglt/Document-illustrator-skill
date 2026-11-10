@@ -216,6 +216,7 @@ class NebulaTests(unittest.TestCase):
         )])
         section = {"gemini": {
             "GEMINI_API_KEY": "google-section-test", "GEMINI_MODEL": "gemini-3.1-flash-image",
+            "GEMINI_BASE_URL": "https://gemini.example",
             "ILLUSTRATOR_BATCH_RATIO": "3:4", "ILLUSTRATOR_RESOLUTION": "4K",
         }}
         with patch.object(env_config, "_sections", section), patch.object(genai, "Client", return_value=client) as factory:
@@ -226,11 +227,25 @@ class NebulaTests(unittest.TestCase):
                 provider=args.provider, aspect_ratio=args.ratio,
             )
         self.assertTrue(Path(result).exists())
-        factory.assert_called_once_with(api_key="google-section-test")
+        factory.assert_called_once()
+        self.assertEqual(factory.call_args.kwargs["api_key"], "google-section-test")
+        self.assertEqual(factory.call_args.kwargs["http_options"].base_url, "https://gemini.example")
         request = client.models.generate_content.call_args.kwargs
         self.assertEqual(request["model"], "gemini-3.1-flash-image")
         self.assertEqual(request["config"].image_config.aspect_ratio, "3:4")
         self.assertEqual(request["config"].image_config.image_size, "4K")
+
+    def test_nebula_group_endpoint(self):
+        section = {"image2-4k": {
+            "NEBULA_API_KEY": "test-key",
+            "NEBULA_ENDPOINT": "https://nebula.example/v1/images/generations",
+        }}
+        with patch.object(env_config, "_sections", section), patch.object(
+            image_api, "read_request", side_effect=RuntimeError("mock-stop")
+        ) as read:
+            with self.assertRaisesRegex(RuntimeError, "mock-stop"):
+                image_api.generate_nebula("test", self.output)
+        self.assertEqual(read.call_args.args[0].full_url, section["image2-4k"]["NEBULA_ENDPOINT"])
 
     def test_timeout_does_not_resubmit_post(self):
         opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=URLError(TimeoutError())))

@@ -111,7 +111,12 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
             raise ValueError("GEMINI_MODEL 不能为空")
 
         # 调用 Gemini API
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(
+                base_url=config.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com"
+            ),
+        )
 
         response = client.models.generate_content(
             model=model,

@@ -317,6 +317,13 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 
 ### API 调用
 
+各后端读取统一 `.env` 对应分组的 URL：`[nanobanana]` 使用
+`NEBULA_NANOBANANA_BASE_URL=https://img-api.apinebula.ai`，脚本追加
+`/v1beta/models/{model}:generateContent`；`[image2-4k]` 使用完整接口地址
+`NEBULA_ENDPOINT=https://img-api.apinebula.ai/v1/images/generations`；
+`[gemini]` 使用 `GEMINI_BASE_URL=https://generativelanguage.googleapis.com`，
+由 SDK 追加 API 版本和模型路径。未配置或留空时沿用这些默认地址。
+
 - **Gemini 模型**：`gemini-3-pro-image-preview`（脚本当前默认值）
 - **Nebula 模型**：`gpt-image-2-4k`，使用 image2-4k 分组令牌
 - **成本**：每张图片 = 1 次 API 调用

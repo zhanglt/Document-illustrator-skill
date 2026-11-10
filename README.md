@@ -154,6 +154,7 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
 
 [nanobanana]
+NEBULA_NANOBANANA_BASE_URL=https://img-api.apinebula.ai
 NEBULA_NANOBANANA_API_KEY=your-nanobanana-api-key
 NEBULA_NANOBANANA_MODEL=gemini-3.1-flash-image
 ILLUSTRATOR_SINGLE_RATIO=16:9
@@ -161,18 +162,31 @@ ILLUSTRATOR_BATCH_RATIO=16:9
 ILLUSTRATOR_RESOLUTION=2K
 
 [image2-4k]
+NEBULA_ENDPOINT=https://img-api.apinebula.ai/v1/images/generations
 NEBULA_API_KEY=your-image2-4k-api-key
 NEBULA_MODEL=gpt-image-2-4k
 NEBULA_SIZE=3840x2160
 NEBULA_QUALITY=high
 
 [gemini]
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com
 GEMINI_API_KEY=your-google-gemini-api-key
 GEMINI_MODEL=gemini-3-pro-image-preview
 ILLUSTRATOR_SINGLE_RATIO=16:9
 ILLUSTRATOR_BATCH_RATIO=16:9
 ILLUSTRATOR_RESOLUTION=2K
 ```
+
+各后端的访问地址独立配置，未配置或值为空时使用示例中的默认地址：
+
+| 分组 | URL 配置项 | 地址格式 |
+|------|------------|----------|
+| `[nanobanana]` | `NEBULA_NANOBANANA_BASE_URL` | 基础地址，脚本追加 `/v1beta/models/{model}:generateContent` |
+| `[image2-4k]` | `NEBULA_ENDPOINT` | 完整生图接口地址，包含 `/v1/images/generations` |
+| `[gemini]` | `GEMINI_BASE_URL` | 基础地址，由 `google-genai` SDK 追加 API 版本和模型路径 |
+
+已有 `.env` 只需将 URL 配置项补入对应分组，不要重复创建分组。
+本地 `.env` 含真实密钥，已由 Git 忽略；共享配置示例使用本节占位符。
 
 `[nanobanana]` 的 `ILLUSTRATOR_*` 图片参数仅对 nanobanana 生效。
 `[image2-4k]` 无需重复配置比例与分辨率；会使用其内置的 16:9、4K 默认值，
