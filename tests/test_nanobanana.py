@@ -35,6 +35,7 @@ class NanobananaTests(unittest.TestCase):
         env = patch.dict(os.environ, {
             "NEBULA_NANOBANANA_API_KEY": "banana-test-key",
             "NEBULA_NANOBANANA_MODEL": "gemini-3.1-flash-image",
+            "NEBULA_NANOBANANA_BASE_URL": "",
             "ILLUSTRATOR_SINGLE_RATIO": "", "ILLUSTRATOR_BATCH_RATIO": "",
             "ILLUSTRATOR_RESOLUTION": "",
         })
@@ -65,7 +66,7 @@ class NanobananaTests(unittest.TestCase):
 
     def test_group_base_url(self):
         section = {"nanobanana": {
-            "NEBULA_NANOBANANA_BASE_URL": "https://banana.example/",
+            "NEBULA_NANOBANANA_BASE_URL": "https://banana.example/v2/models/",
         }}
         with patch.object(env_config, "_sections", section), patch.object(
             image_api, "read_request", return_value=self.response([{"inlineData": self.inline}])
@@ -73,7 +74,7 @@ class NanobananaTests(unittest.TestCase):
             image_api.generate_nanobanana("test", self.output)
         self.assertEqual(
             read.call_args.args[0].full_url,
-            "https://banana.example/v1beta/models/gemini-3.1-flash-image:generateContent",
+            "https://banana.example/v2/models/gemini-3.1-flash-image:generateContent",
         )
 
     def test_model_and_1k(self):

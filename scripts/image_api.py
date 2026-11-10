@@ -102,7 +102,7 @@ def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K
     if not api_key:
         raise ValueError("请设置 NEBULA_NANOBANANA_API_KEY，令牌必须属于 nanobanana 分组")
     model = config.get("NEBULA_NANOBANANA_MODEL", "gemini-3.1-flash-image")
-    base_url = (config.get("NEBULA_NANOBANANA_BASE_URL") or "https://img-api.apinebula.ai").rstrip("/")
+    base_url = (config.get("NEBULA_NANOBANANA_BASE_URL") or "https://img-api.apinebula.ai/v1beta/models").rstrip("/")
     if not re.fullmatch(r"[A-Za-z0-9._-]+", model):
         raise ValueError("NEBULA_NANOBANANA_MODEL 必须为有效模型名称")
     payload = {
@@ -113,7 +113,7 @@ def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K
         },
     }
     request = Request(
-        f"{base_url}/v1beta/models/{model}:generateContent",
+        f"{base_url}/{model}:generateContent",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",

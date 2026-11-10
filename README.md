@@ -113,6 +113,7 @@ Claude 会引导你完成整个配图生成流程。
 在统一配置文件 `~/.agents/skills/document-illustrator/.env` 中添加：
 
 ```dotenv
+NEBULA_NANOBANANA_BASE_URL=https://img-api.apinebula.ai/v1beta/models
 NEBULA_NANOBANANA_API_KEY=your-nanobanana-group-api-key
 NEBULA_NANOBANANA_MODEL=gemini-3.1-flash-image
 # 可选：设为默认生图后端
@@ -154,7 +155,7 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
 
 [nanobanana]
-NEBULA_NANOBANANA_BASE_URL=https://img-api.apinebula.ai
+NEBULA_NANOBANANA_BASE_URL=https://img-api.apinebula.ai/v1beta/models
 NEBULA_NANOBANANA_API_KEY=your-nanobanana-api-key
 NEBULA_NANOBANANA_MODEL=gemini-3.1-flash-image
 ILLUSTRATOR_SINGLE_RATIO=16:9
@@ -181,7 +182,7 @@ ILLUSTRATOR_RESOLUTION=2K
 
 | 分组 | URL 配置项 | 地址格式 |
 |------|------------|----------|
-| `[nanobanana]` | `NEBULA_NANOBANANA_BASE_URL` | 基础地址，脚本追加 `/v1beta/models/{model}:generateContent` |
+| `[nanobanana]` | `NEBULA_NANOBANANA_BASE_URL` | 包含 API 版本和 `/models` 的基础地址，脚本仅追加 `/{model}:generateContent`；升级版本时修改此配置 |
 | `[image2-4k]` | `NEBULA_ENDPOINT` | 完整生图接口地址，包含 `/v1/images/generations` |
 | `[gemini]` | `GEMINI_BASE_URL` | 基础地址，由 `google-genai` SDK 追加 API 版本和模型路径 |
 
