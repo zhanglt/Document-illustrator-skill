@@ -23,7 +23,7 @@ allowed-tools:
 - 🎨 **格式无关**：支持任何格式的文档（Markdown、纯文本、PDF 等）
 - 📐 **灵活比例**：支持 16:9（横屏）和 3:4（竖屏）
 - 🖼️ **封面图可选**：可生成概括全文的封面图
-- 🎭 **三种风格**：渐变玻璃卡片、票据风格、矢量插画
+- 🎭 **16 种风格**：原有 3 种 + 从 codex-ppt 移植的 13 种
 
 ## 🚀 使用方法
 
@@ -44,7 +44,7 @@ allowed-tools:
 ### 每次任务必须由用户选择风格
 
 开始任何单图、批量或自定义 Python 生图调用前，必须获得用户在**本次任务**中明确选择的风格。
-用户未指定时，展示“渐变玻璃卡片 / 票据风格 / 矢量插画 / 自定义风格”及简短特点，询问并等待选择。
+用户未指定时，可根据内容推荐 2–3 种候选及简短特点，同时告知可查看下方全部 16 种风格或使用自定义风格，询问并等待选择。只读取本次选中的风格文件，不必加载全部提示词。
 不得根据文档类型自行决定风格，不得沿用上一任务的风格，也不得使用 `.env` 或脚本默认值替代用户选择。
 用户在本次请求中已明确指定风格，可直接采用，不重复询问。同一任务的系列配图只需选择一次。
 “确认生成”或对配图内容的确认，不等于选择助手自行推荐的风格；必须先明确询问风格并得到选择。
@@ -73,12 +73,14 @@ Codex 会询问你的偏好：
 用户本次未指定时，先询问并等待回答：
 
 ```
-请选择本次配图风格：
-1. 渐变玻璃卡片：玻璃质感、极光渐变，适合科技介绍
-2. 票据风格：黑白对比、票券分区，适合简报和数据报告
-3. 矢量插画：扁平插画、柔和配色，适合业务场景与概念解释
+请选择本次配图风格（可查看全部 16 种）：
+1. 手绘技术解释风：细线草图、淡彩标注，适合技术概念
+2. 清蓝汇报风：蓝青双色、结论先行，适合管理汇报
+3. 其他内置风格：查看下方完整目录
 4. 自定义风格：提供风格说明或风格文件
 ```
+
+以上为对话推荐示例，并非 CLI 菜单编号；候选应随本次内容调整。CLI 显示全部风格并动态编号，自定义文件入口在最后。
 
 比例和分辨率可沿用 `.env`，已知的图片数量和封面要求无需重复询问；风格不得由助手默认指定。
 
@@ -193,7 +195,40 @@ Codex 会询问你的偏好：
     └── illustration-06.png
 ```
 
-## 🎨 三种风格说明
+## 🎨 16 种风格说明
+
+目前共 16 种内置风格：原有 3 种，以及从 codex-ppt 移植的 12 种内置风格和自定义「清蓝汇报风」。移植风格已适配文档封面与正文配图，画幅服从调用参数，支持 `16:9`、`3:4`；运行时不依赖 codex-ppt。原有三种风格保留原提示词。
+
+| 风格 | CLI 标识 | 特点与适用场景 | 提示词 |
+|---|---|---|---|
+| 渐变玻璃卡片 | `gradient-glass` | 玻璃质感、极光渐变，适合科技与产品介绍 | [风格文件](styles/gradient-glass.md) |
+| 票据风格 | `ticket` | 黑白对比、票券分区，适合简报与数据报告 | [风格文件](styles/ticket.md) |
+| 矢量插画 | `vector-illustration` | 扁平插画、柔和配色，适合场景与概念解释 | [风格文件](styles/vector-illustration.md) |
+| 党政红风格 | `government-red` | 庄重红金、正式排版，适合政策与公共服务 | [风格文件](styles/government-red.md) |
+| 创意杂志风 | `creative-editorial` | 非对称版式、醒目标题，适合品牌与创意主题 | [风格文件](styles/creative-editorial.md) |
+| 复古扁平插画风 | `retro-flat` | 复古配色、等粗描边，适合文化与故事 | [风格文件](styles/retro-flat.md) |
+| 手绘技术解释风 | `handdrawn-tech` | 细线草图、淡彩标注，适合技术概念 | [风格文件](styles/handdrawn-tech.md) |
+| 手绘白板风 | `whiteboard` | 白板笔迹、圈画箭头，适合教学与讨论 | [风格文件](styles/whiteboard.md) |
+| 教学课件风 | `teaching-courseware` | 学术蓝、知识层级，适合课程与案例讲解 | [风格文件](styles/teaching-courseware.md) |
+| 数据仪表盘风 | `data-dashboard` | 明亮数据卡、清晰图表，适合指标与趋势 | [风格文件](styles/data-dashboard.md) |
+| 清爽专业风 | `clean-professional` | 浅底蓝青、结构清晰，适合方案与工作说明 | [风格文件](styles/clean-professional.md) |
+| 温暖手工风 | `warm-handmade` | 纸张拼贴、柔和色彩，适合生活与人文故事 | [风格文件](styles/warm-handmade.md) |
+| 电子墨水杂志风 | `eink-editorial` | 墨色纸感、杂志字体，适合观点与专题 | [风格文件](styles/eink-editorial.md) |
+| 科研答辩风 | `research-defense` | 学术蓝红、证据导向，适合研究与技术路线 | [风格文件](styles/research-defense.md) |
+| 麦肯锡风格 | `consulting` | 理性蓝灰、结构化隐喻，适合商业分析 | [风格文件](styles/consulting.md) |
+| 清蓝汇报风 | `clear-blue-report` | 蓝青双色、结论先行，适合管理与行业汇报 | [风格文件](styles/clear-blue-report.md) |
+
+例如，在本次任务已选择手绘技术解释风后：
+
+```powershell
+python -X utf8 scripts/generate_single_image.py --provider nanobanana --style handdrawn-tech --title "技术原理" --content "本次确认的配图内容" --ratio 3:4 --resolution 2K --output output/technical.png
+python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanana --style clear-blue-report --level h2 --ratio 16:9 --resolution 2K --output output
+```
+
+两条命令分别演示两种风格，执行前应确认本次任务选择。Nebula image2-4k 的比例与分辨率限制仍以该后端要求为准。
+
+### 原有三种风格详解
+
 
 ### 1. 渐变玻璃卡片风格 (gradient-glass)
 

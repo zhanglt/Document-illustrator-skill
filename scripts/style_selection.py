@@ -7,6 +7,19 @@ STYLES = {
     "gradient-glass": "渐变玻璃卡片：玻璃质感、极光渐变，适合科技与产品介绍",
     "ticket": "票据风格：黑白对比、票券分区，适合简报与数据报告",
     "vector-illustration": "矢量插画：扁平插画、柔和配色，适合场景与概念解释",
+    "government-red": "党政红风格：庄重红金、正式排版，适合政策与公共服务",
+    "creative-editorial": "创意杂志风：非对称版式、醒目标题，适合品牌与创意主题",
+    "retro-flat": "复古扁平插画风：复古配色、等粗描边，适合文化与故事",
+    "handdrawn-tech": "手绘技术解释风：细线草图、淡彩标注，适合技术概念",
+    "whiteboard": "手绘白板风：白板笔迹、圈画箭头，适合教学与讨论",
+    "teaching-courseware": "教学课件风：学术蓝、知识层级，适合课程与案例讲解",
+    "data-dashboard": "数据仪表盘风：明亮数据卡、清晰图表，适合指标与趋势",
+    "clean-professional": "清爽专业风：浅底蓝青、结构清晰，适合方案与工作说明",
+    "warm-handmade": "温暖手工风：纸张拼贴、柔和色彩，适合生活与人文故事",
+    "eink-editorial": "电子墨水杂志风：墨色纸感、杂志字体，适合观点与专题",
+    "research-defense": "科研答辩风：学术蓝红、证据导向，适合研究与技术路线",
+    "consulting": "麦肯锡风格：理性蓝灰、结构化隐喻，适合商业分析",
+    "clear-blue-report": "清蓝汇报风：蓝青双色、结论先行，适合管理与行业汇报",
 }
 
 
@@ -23,15 +36,16 @@ def choose_style(style=None, style_file=None):
         names = list(STYLES)
         for index, name in enumerate(names, 1):
             print(f"{index}. {STYLES[name]}")
-        print("4. 自定义风格文件")
+        custom_choice = str(len(names) + 1)
+        print(f"{custom_choice}. 自定义风格文件")
         while True:
             try:
-                choice = input("请输入选择 (1/2/3/4)：").strip()
-                if choice == "4":
+                choice = input(f"请输入选择 (1-{custom_choice})：").strip()
+                if choice == custom_choice:
                     style_file = input("请输入风格文件路径：").strip()
                     if style_file:
                         break
-                elif choice in ("1", "2", "3"):
+                elif choice in {str(index) for index in range(1, len(names) + 1)}:
                     style = names[int(choice) - 1]
                     break
             except (EOFError, KeyboardInterrupt):

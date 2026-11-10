@@ -14,7 +14,7 @@
 
 - **🤖 AI 智能归纳**：自动理解文档内容，智能提取核心主题，无需依赖标题格式
 - **📝 格式无关**：支持任何格式的文档（Markdown、纯文本、PDF 等）
-- **🎨 三种风格**：渐变玻璃卡片、票据风格、矢量插画，满足不同场景需求
+- **🎨 16 种风格**：保留原有 3 种，新增 codex-ppt 的 13 种移植风格，覆盖技术、报告、教学与创意场景
 - **📐 图片规格**：Gemini 支持 16:9 和 3:4；Nebula image2-4k 支持 16:9、3840x2160
 - **生图后端可选**：通过 `--provider gemini|nebula|nanobanana` 切换，支持配置默认后端
 - **🖼️ 封面图可选**：可生成概括全文的封面图作为系列配图的引导
@@ -57,7 +57,40 @@ git clone https://github.com/zhanglt/Document-illustrator-skill.git document-ill
 
 Claude 会引导你完成整个配图生成流程。
 
-## 🎨 三种风格说明
+## 🎨 16 种风格说明
+
+目前共 16 种内置风格：原有 3 种，以及从 codex-ppt 移植的 12 种内置风格和自定义「清蓝汇报风」。移植风格已适配文档封面与正文配图，画幅服从调用参数，支持 `16:9`、`3:4`；运行时不依赖 codex-ppt。原有三种风格保留原提示词。
+
+| 风格 | CLI 标识 | 特点与适用场景 | 提示词 |
+|---|---|---|---|
+| 渐变玻璃卡片 | `gradient-glass` | 玻璃质感、极光渐变，适合科技与产品介绍 | [风格文件](styles/gradient-glass.md) |
+| 票据风格 | `ticket` | 黑白对比、票券分区，适合简报与数据报告 | [风格文件](styles/ticket.md) |
+| 矢量插画 | `vector-illustration` | 扁平插画、柔和配色，适合场景与概念解释 | [风格文件](styles/vector-illustration.md) |
+| 党政红风格 | `government-red` | 庄重红金、正式排版，适合政策与公共服务 | [风格文件](styles/government-red.md) |
+| 创意杂志风 | `creative-editorial` | 非对称版式、醒目标题，适合品牌与创意主题 | [风格文件](styles/creative-editorial.md) |
+| 复古扁平插画风 | `retro-flat` | 复古配色、等粗描边，适合文化与故事 | [风格文件](styles/retro-flat.md) |
+| 手绘技术解释风 | `handdrawn-tech` | 细线草图、淡彩标注，适合技术概念 | [风格文件](styles/handdrawn-tech.md) |
+| 手绘白板风 | `whiteboard` | 白板笔迹、圈画箭头，适合教学与讨论 | [风格文件](styles/whiteboard.md) |
+| 教学课件风 | `teaching-courseware` | 学术蓝、知识层级，适合课程与案例讲解 | [风格文件](styles/teaching-courseware.md) |
+| 数据仪表盘风 | `data-dashboard` | 明亮数据卡、清晰图表，适合指标与趋势 | [风格文件](styles/data-dashboard.md) |
+| 清爽专业风 | `clean-professional` | 浅底蓝青、结构清晰，适合方案与工作说明 | [风格文件](styles/clean-professional.md) |
+| 温暖手工风 | `warm-handmade` | 纸张拼贴、柔和色彩，适合生活与人文故事 | [风格文件](styles/warm-handmade.md) |
+| 电子墨水杂志风 | `eink-editorial` | 墨色纸感、杂志字体，适合观点与专题 | [风格文件](styles/eink-editorial.md) |
+| 科研答辩风 | `research-defense` | 学术蓝红、证据导向，适合研究与技术路线 | [风格文件](styles/research-defense.md) |
+| 麦肯锡风格 | `consulting` | 理性蓝灰、结构化隐喻，适合商业分析 | [风格文件](styles/consulting.md) |
+| 清蓝汇报风 | `clear-blue-report` | 蓝青双色、结论先行，适合管理与行业汇报 | [风格文件](styles/clear-blue-report.md) |
+
+例如，在本次任务已选择手绘技术解释风后：
+
+```powershell
+python -X utf8 scripts/generate_single_image.py --provider nanobanana --style handdrawn-tech --title "技术原理" --content "本次确认的配图内容" --ratio 3:4 --resolution 2K --output output/technical.png
+python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanana --style clear-blue-report --level h2 --ratio 16:9 --resolution 2K --output output
+```
+
+两条命令分别演示两种风格，执行前应确认本次任务选择。Nebula image2-4k 的比例与分辨率限制仍以该后端要求为准。
+
+### 原有三种风格详解
+
 
 ### 1. 渐变玻璃卡片风格 (gradient-glass)
 
@@ -346,11 +379,11 @@ python3 scripts/generate_single_image.py --help
 
 ### 每次任务先选择生图风格
 
-每次新任务都需要用户明确选择风格。助手会展示渐变玻璃卡片、票据风格、矢量插画及自定义风格选项；
+每次新任务都需要用户明确选择风格。助手可结合内容推荐 2–3 种候选，同时告知可查看全部 16 种内置风格或使用自定义风格；
 用户在本次请求中已经指定的风格可直接采用。同一任务的系列图片只需选择一次。
 助手可以提出建议，但不能自动决定风格、沿用上一次任务的选择，或把内容确认视为风格选择。
 
-单图与批量 CLI 共用风格选择入口：未传 `--style` 或 `--style-file` 时显示菜单并等待输入，
+单图与批量 CLI 共用风格选择入口：未传 `--style` 或 `--style-file` 时显示全部 16 种风格的动态编号菜单（自定义文件为最后一项）并等待输入，
 空输入不会采用默认值；输入结束仍未选择时停止，不发起生图请求。
 显式参数代表本次选择，供直接 CLI 使用或助手在获得用户选择后传入；这两个参数互斥。
 自定义风格通过 `--style-file` 指定。助手直接调用 Python 函数时也须先向用户确认风格，
@@ -469,7 +502,7 @@ python3 scripts/generate_single_image.py \
 
 - `--title`: 图片标题
 - `--content`: 图片内容描述
-- `--style`: 风格（gradient-glass / ticket / vector-illustration）
+- `--style`: 本次明确选择的内置风格，完整 16 种标识见风格目录或 `--help`
 - `--aspect-ratio`: 比例（16:9 / 3:4）
 - `--resolution`: 分辨率（2K / 4K）
 - `--output`: 输出文件路径
@@ -556,7 +589,8 @@ document-illustrator/
 ├── styles/                   # 风格提示词目录
 │   ├── gradient-glass.md            # 渐变玻璃卡片风格
 │   ├── ticket.md                     # 票据风格
-│   └── vector-illustration.md        # 矢量插画风格
+│   ├── vector-illustration.md        # 矢量插画风格
+│   └── ...                           # 另有 13 个移植风格文件，见完整目录
 └── examples/                 # 示例图片目录（可选）
     └── README.md                     # 示例说明
 ```
@@ -581,7 +615,7 @@ document-illustrator/
 - 视觉效果
 ```
 
-3. 修改 `scripts/generate_single_image.py` 以支持新风格（在 `--style` 参数中添加新选项）
+3. 可直接通过 `--style-file styles/my-style.md` 使用，无需改代码。若要加入内置菜单，在 `scripts/style_selection.py` 的 `STYLES` 注册表中添加同名标识与中文说明；单图、批量 CLI 与交互菜单会共同生效。
 
 ### 贡献指南
 

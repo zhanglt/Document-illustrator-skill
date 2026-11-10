@@ -38,8 +38,62 @@ class StyleSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             custom = Path(directory) / "custom.md"
             custom.write_text("自定义风格", encoding="utf-8")
-            with patch("builtins.input", side_effect=["4", str(custom)]), contextlib.redirect_stdout(io.StringIO()):
+            with patch("builtins.input", side_effect=[str(len(style_selection.STYLES) + 1), str(custom)]), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(style_selection.choose_style(), str(custom))
+
+    def test_new_menu_choices_and_prompt_extraction(self):
+        names = list(style_selection.STYLES)
+        self.assertEqual(len(names), 16)
+        for index in (4, len(names)):
+            with self.subTest(index=index), patch("builtins.input", return_value=str(index)), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(Path(style_selection.choose_style()).stem, names[index - 1])
+        root = Path(style_selection.__file__).resolve().parents[1]
+        for name in names[3:]:
+            with self.subTest(style=name):
+                path = root / "styles" / f"{name}.md"
+                content = path.read_text(encoding="utf-8")
+                prompt = generate_illustrations.extract_core_prompt(path)
+                self.assertEqual(prompt, content.split("### 提示词", 1)[1].strip())
+                self.assertNotIn("来源：", prompt)
+
+    def test_interrupted_selection_stops(self):
+        with patch("builtins.input", side_effect=KeyboardInterrupt), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(ValueError, "尚未选择"):
+                style_selection.choose_style()
+
+    def test_imported_styles_reach_generation_in_both_clis(self):
+        with tempfile.TemporaryDirectory() as directory:
+            document = Path(directory) / "article.md"
+            document.write_text("## 技术原理\n监测、分析与预警。\n", encoding="utf-8")
+            for name in list(style_selection.STYLES)[3:]:
+                for module in (generate_single_image, generate_illustrations):
+                    for ratio in ("16:9", "3:4"):
+                        arguments = ["--style", name, "--provider", "nanobanana", "--ratio", ratio,
+                                     "--resolution", "2K", "--output", str(Path(directory) / "output")]
+                        if module is generate_single_image:
+                            arguments += ["--title", "技术原理", "--content", "监测、分析与预警。"]
+                        else:
+                            arguments += [str(document), "--level", "h2"]
+                        with self.subTest(style=name, module=module.__name__, ratio=ratio), \
+                             patch.object(sys, "argv", [module.__name__] + arguments), \
+                             patch("builtins.input") as ask, \
+                             patch.object(generate_single_image, "generate_image", return_value="result.png") as generate, \
+                             contextlib.redirect_stdout(io.StringIO()):
+                            if module is generate_single_image:
+                                with self.assertRaises(SystemExit) as caught:
+                                    module.main()
+                                self.assertEqual(caught.exception.code, 0)
+                            else:
+                                module.main()
+                            ask.assert_not_called()
+                            generate.assert_called_once()
+                            call = generate.call_args
+                            self.assertEqual(call.kwargs["provider"], "nanobanana")
+                            self.assertEqual(call.kwargs["aspect_ratio"], ratio)
+                            self.assertEqual(call.kwargs["resolution"], "2K")
+                            prompt = call.kwargs.get("style_prompt") if module is generate_single_image else call.args[2]
+                            self.assertIn("画幅比例遵循本次调用参数", prompt)
 
     def test_no_selection_is_reused_between_tasks(self):
         with patch("builtins.input", side_effect=["1", "3"]) as ask, contextlib.redirect_stdout(io.StringIO()):
