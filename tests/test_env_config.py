@@ -40,6 +40,23 @@ class EnvConfigTests(unittest.TestCase):
             self.assertTrue(env_config.find_and_load_env())
             self.assertEqual(os.environ["ILLUSTRATOR_TEST_CONFIG"], "shared")
 
+    def test_global_proxy_from_shared_env(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(
+            "ILLUSTRATOR_IMAGE_PROVIDER=nebula\nPROXY=http://127.0.0.1:81\n"
+            "[image2-4k]\nPROXY=http://wrong.example:82\n",
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
+            env_config.find_and_load_env()
+            self.assertEqual(env_config.get_proxy_url(), "http://127.0.0.1:81")
+
+    def test_invalid_proxy_is_rejected(self):
+        for value in ("socks5://127.0.0.1:81", "http://", "http://127.0.0.1:bad"):
+            with self.subTest(value=value), patch.dict(os.environ, {"PROXY": value}):
+                with self.assertRaisesRegex(ValueError, "PROXY"):
+                    env_config.get_proxy_url()
+
     def test_image_options_from_shared_env_and_cli_override(self):
         self.config.parent.mkdir(parents=True)
         self.config.write_text(

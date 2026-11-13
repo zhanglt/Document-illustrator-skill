@@ -6,17 +6,18 @@ import json
 import os
 import re
 import socket
+import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from PIL import Image
-from env_config import get_provider_config
+from env_config import get_provider_config, get_proxy_url
 
 
 NEBULA_ENDPOINT = "https://img-api.apinebula.ai/v1/images/generations"
-PROXY = "http://127.0.0.1:81"
+NEBULA_EDITS_ENDPOINT = "https://img-api.apinebula.ai/v1/images/edits"
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 
 
@@ -64,6 +65,7 @@ def resolve_options(parser, args, aspect_ratio=None, batch=False):
 
 def read_request(request, timeout, limit):
     """仅在明确拒绝或连接尚未建立时用代理重试，避免重复计费。"""
+    proxy = get_proxy_url()
     def read(opener):
         with opener.open(request, timeout=timeout) as response:
             content = response.read(limit + 1)
@@ -86,12 +88,14 @@ def read_request(request, timeout, limit):
     except TimeoutError:
         if request.get_method() == "POST":
             raise RuntimeError("生图请求超时，任务状态未知；请核实后再重试") from None
+    if not proxy:
+        raise RuntimeError("直连失败且未配置 PROXY；请在共享 .env 中设置代理后重试")
     try:
-        return read(build_opener(ProxyHandler({"http": PROXY, "https": PROXY}), *handlers))
+        return read(build_opener(ProxyHandler({"http": proxy, "https": proxy}), *handlers))
     except HTTPError as exc:
         raise RuntimeError(f"代理请求返回 HTTP {exc.code}") from None
     except URLError:
-        raise RuntimeError("代理连接失败；请检查 http://127.0.0.1:81") from None
+        raise RuntimeError("代理连接失败；请检查共享 .env 中的 PROXY") from None
 
 
 def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K"):
@@ -152,6 +156,22 @@ def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K
 
 
 def generate_nebula(prompt, output_path):
+    config, api_key, model, size, quality, expected_size = _nebula_settings()
+    payload = {
+        "model": model, "prompt": prompt,
+        "size": size, "quality": quality, "response_format": "url",
+    }
+    request = Request(
+        config.get("NEBULA_ENDPOINT") or NEBULA_ENDPOINT,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    response = json.loads(read_request(request, timeout=1800, limit=80 * 1024 * 1024))
+    return _save_nebula_image(response, output_path, expected_size)
+
+
+def _nebula_settings():
     config = get_provider_config("nebula")
     api_key = config.get("NEBULA_API_KEY")
     if not api_key:
@@ -168,24 +188,63 @@ def generate_nebula(prompt, output_path):
         raise ValueError("NEBULA_SIZE 超过本地图片处理上限")
     if quality not in ("auto", "low", "medium", "high"):
         raise ValueError("NEBULA_QUALITY 必须为 auto、low、medium 或 high")
-    payload = {
-        "model": model, "prompt": prompt,
-        "size": size, "quality": quality, "response_format": "url",
-    }
+    return config, api_key, model, size, quality, expected_size
+
+
+def edit_nebula(prompt, image_paths, output_path):
+    """使用一张或多张参考图编辑，始终创建新的输出文件。"""
+    if not prompt or not prompt.strip():
+        raise ValueError("编辑提示词不能为空")
+    if not image_paths:
+        raise ValueError("至少需要一张参考图")
+    config, api_key, model, size, quality, expected_size = _nebula_settings()
+    output_path = Path(output_path)
+    response_path = output_path.with_suffix(output_path.suffix + ".response.json")
+    if output_path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+        raise ValueError("输出格式必须为 PNG、JPEG 或 WebP")
+    if output_path.exists() or response_path.exists():
+        raise FileExistsError("输出图片或响应缓存已存在，请指定新的输出路径")
+
+    boundary = "document-illustrator-" + uuid.uuid4().hex
+    parts = []
+    for name, value in (
+        ("model", model), ("prompt", prompt), ("size", size),
+        ("quality", quality), ("response_format", "url"), ("input_fidelity", "high"),
+    ):
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode("utf-8"))
+    for index, path in enumerate(image_paths, 1):
+        path = Path(path)
+        if not path.is_file() or path.stat().st_size > MAX_IMAGE_BYTES:
+            raise ValueError(f"参考图不存在或超过 50 MiB：{path}")
+        with Image.open(path) as image:
+            image.load()
+            if image.format not in ("PNG", "JPEG", "WEBP"):
+                raise ValueError(f"参考图仅支持 PNG、JPEG、WebP：{path}")
+            mime = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}[image.format]
+            suffix = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
+        parts.append((f"--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; "
+                      f"filename=\"reference-{index}.{suffix}\"\r\nContent-Type: {mime}\r\n\r\n").encode("ascii"))
+        parts.append(path.read_bytes())
+        parts.append(b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode("ascii"))
     request = Request(
-        config.get("NEBULA_ENDPOINT") or NEBULA_ENDPOINT,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        config.get("NEBULA_EDITS_ENDPOINT") or NEBULA_EDITS_ENDPOINT,
+        data=b"".join(parts),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
         method="POST",
     )
     response = json.loads(read_request(request, timeout=1800, limit=80 * 1024 * 1024))
+    return _save_nebula_image(response, output_path, expected_size)
+
+
+def _save_nebula_image(response, output_path, expected_size):
     if not isinstance(response, dict):
         raise ValueError("Nebula 响应必须为 JSON 对象")
     data = response.get("data")
     if not isinstance(data, list) or not data or not isinstance(data[0], dict):
         raise ValueError("Nebula 响应缺少 data[0] 图片数据")
 
-    # 下载失败时可以复用响应，避免重新提交收费的生图任务。
+    # 下载失败时可以复用响应，避免重新提交收费请求。
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     response_path = output_path.with_suffix(output_path.suffix + ".response.json")
@@ -210,7 +269,9 @@ def generate_nebula(prompt, output_path):
     with Image.open(io.BytesIO(image_bytes)) as image:
         image.load()
         if image.size != expected_size:
-            raise ValueError(f"Nebula 实际图片尺寸为 {image.width}x{image.height}，预期 {size}")
+            raise ValueError(f"Nebula 实际图片尺寸为 {image.width}x{image.height}，预期 {expected_size[0]}x{expected_size[1]}")
         # 服务端可能返回 JPEG；按本地扩展名编码，避免把 JPEG 字节命名为 PNG。
+        if output_path.suffix.lower() in (".jpg", ".jpeg") and image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
         image.save(output_path)
     return str(output_path)

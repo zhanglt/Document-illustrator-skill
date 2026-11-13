@@ -9,7 +9,7 @@ import sys
 import argparse
 from pathlib import Path
 from style_selection import add_style_arguments, resolve_style
-from env_config import find_and_load_env, get_provider_config
+from env_config import find_and_load_env, get_provider_config, get_proxy_url
 from image_api import add_provider_argument, generate_nebula, generate_nanobanana, get_provider, resolve_options, validate_options
 
 
@@ -109,12 +109,14 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
         model = config.get("GEMINI_MODEL", "gemini-3-pro-image-preview")
         if not model or not model.strip():
             raise ValueError("GEMINI_MODEL 不能为空")
+        proxy = get_proxy_url()
 
         # 调用 Gemini API
         client = genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(
-                base_url=config.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com"
+                base_url=config.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com",
+                client_args={"proxy": proxy} if proxy else None,
             ),
         )
 

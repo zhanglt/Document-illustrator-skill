@@ -75,6 +75,75 @@ class NebulaTests(unittest.TestCase):
         self.assertEqual(read.call_count, 1)
         self.assertTrue(self.output.exists())
 
+    def test_edit_multipart_contract_and_original_preserved(self):
+        source = Path(self.temp.name) / "source.jpg"
+        source.write_bytes(self.jpeg)
+        original = source.read_bytes()
+        response = self.response({"url": "https://cdn.example/edited.jpg"})
+        with patch.object(image_api, "read_request", side_effect=[response, self.jpeg]) as read:
+            image_api.edit_nebula("保留主体，替换背景", [source], self.output)
+        request = read.call_args_list[0].args[0]
+        self.assertEqual(request.full_url, image_api.NEBULA_EDITS_ENDPOINT)
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-key")
+        self.assertIn("multipart/form-data; boundary=", request.get_header("Content-type"))
+        for field in (b'name="model"', b'gpt-image-2-4k', b'name="prompt"',
+                      b'name="size"', b'3840x2160', b'name="quality"', b'high',
+                      b'name="input_fidelity"', b'name="image"', b'image/jpeg'):
+            self.assertIn(field, request.data)
+        self.assertIn("保留主体，替换背景".encode(), request.data)
+        self.assertEqual(read.call_args_list[0].kwargs["timeout"], 1800)
+        self.assertIsNone(read.call_args_list[1].args[0].get_header("Authorization"))
+        self.assertEqual(source.read_bytes(), original)
+        with Image.open(self.output) as image:
+            self.assertEqual((image.format, image.size), ("PNG", (3840, 2160)))
+        self.assertTrue(self.output.with_suffix(".png.response.json").exists())
+
+    def test_edit_multiple_images_and_base64(self):
+        source = Path(self.temp.name) / "source.jpg"
+        source.write_bytes(self.jpeg)
+        with patch.object(image_api, "read_request", return_value=self.response({
+            "b64_json": base64.b64encode(self.jpeg).decode(),
+        })) as read:
+            image_api.edit_nebula("test", [source, source], self.output)
+        self.assertEqual(read.call_count, 1)
+        self.assertEqual(read.call_args.args[0].data.count(b'name="image"'), 2)
+        self.assertTrue(self.output.exists())
+
+    def test_edit_rejects_existing_output_and_invalid_input_before_request(self):
+        source = Path(self.temp.name) / "source.jpg"
+        source.write_bytes(self.jpeg)
+        self.output.parent.mkdir(parents=True)
+        self.output.write_bytes(b"existing")
+        with patch.object(image_api, "read_request") as read:
+            with self.assertRaises(FileExistsError):
+                image_api.edit_nebula("test", [source], self.output)
+            read.assert_not_called()
+        self.assertEqual(self.output.read_bytes(), b"existing")
+        self.output.unlink()
+        source.write_bytes(b"not an image")
+        with patch.object(image_api, "read_request") as read:
+            with self.assertRaises(OSError):
+                image_api.edit_nebula("test", [source], self.output)
+            read.assert_not_called()
+
+    def test_edit_jpeg_output_converts_alpha_and_uses_group_endpoint(self):
+        source = Path(self.temp.name) / "source.jpg"
+        source.write_bytes(self.jpeg)
+        buffer = io.BytesIO()
+        Image.new("RGBA", (16, 9), (0, 100, 200, 128)).save(buffer, format="PNG")
+        section = {"image2-4k": {
+            "NEBULA_SIZE": "16x9", "NEBULA_EDITS_ENDPOINT": "https://nebula.example/v1/images/edits",
+        }}
+        with patch.object(env_config, "_sections", section), patch.object(
+            image_api, "read_request", return_value=self.response({
+                "b64_json": base64.b64encode(buffer.getvalue()).decode(),
+            })
+        ) as read:
+            image_api.edit_nebula("test", [source], self.output.with_suffix(".jpg"))
+        self.assertEqual(read.call_args.args[0].full_url, section["image2-4k"]["NEBULA_EDITS_ENDPOINT"])
+        with Image.open(self.output.with_suffix(".jpg")) as image:
+            self.assertEqual((image.format, image.mode, image.size), ("JPEG", "RGB", (16, 9)))
+
     def test_group_request_parameters_and_dimension_validation(self):
         buffer = io.BytesIO()
         Image.new("RGB", (160, 90)).save(buffer, format="PNG")
@@ -207,6 +276,22 @@ class NebulaTests(unittest.TestCase):
         self.assertEqual(request["config"].image_config.aspect_ratio, "16:9")
         self.assertEqual(request["config"].image_config.image_size, "2K")
 
+    def test_gemini_uses_global_proxy_without_group_override(self):
+        from google import genai
+
+        client = unittest.mock.MagicMock()
+        client.models.generate_content.return_value = SimpleNamespace(parts=[SimpleNamespace(
+            inline_data=object(), as_image=lambda: Image.new("RGB", (16, 9)),
+        )])
+        section = {"gemini": {"PROXY": "http://wrong.example:82"}}
+        with patch.object(env_config, "_sections", section), patch.dict(os.environ, {
+            "GEMINI_API_KEY": "gemini-test", "PROXY": "http://127.0.0.1:81",
+        }), patch.object(genai, "Client", return_value=client) as factory:
+            generate_single_image.generate_image(
+                "title", "body", "style", str(self.output), provider="gemini",
+            )
+        self.assertEqual(factory.call_args.kwargs["http_options"].client_args["proxy"], "http://127.0.0.1:81")
+
     def test_native_gemini_group_model_key_and_batch_request(self):
         from google import genai
 
@@ -272,10 +357,19 @@ class NebulaTests(unittest.TestCase):
         response = unittest.mock.MagicMock()
         response.__enter__.return_value.read.return_value = b'{}'
         second = SimpleNamespace(open=unittest.mock.Mock(return_value=response))
-        with patch.object(image_api, "build_opener", side_effect=[first, second]) as build:
+        with patch.dict(os.environ, {"PROXY": "http://127.0.0.1:81"}), patch.object(
+            image_api, "build_opener", side_effect=[first, second]
+        ) as build:
             result = image_api.read_request(Request(image_api.NEBULA_ENDPOINT, data=b'{}'), 1800, 100)
         self.assertEqual(result, b'{}')
-        self.assertEqual(build.call_args.args[0].proxies["https"], image_api.PROXY)
+        self.assertEqual(build.call_args.args[0].proxies["https"], "http://127.0.0.1:81")
+
+    def test_no_proxy_config_does_not_retry_post(self):
+        opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=URLError(ConnectionRefusedError())))
+        with patch.dict(os.environ, {"PROXY": ""}), patch.object(image_api, "build_opener", return_value=opener) as build:
+            with self.assertRaisesRegex(RuntimeError, "未配置 PROXY"):
+                image_api.read_request(Request(image_api.NEBULA_ENDPOINT, data=b'{}'), 1800, 100)
+        self.assertEqual(build.call_count, 1)
 
     def test_http_error_is_sanitized(self):
         opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=HTTPError(

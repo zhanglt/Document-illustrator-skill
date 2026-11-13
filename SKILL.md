@@ -2,8 +2,8 @@
 name: document-illustrator
 description: >
   基于文档内容自动生成配图。AI 智能分析文档结构，归纳核心要点，
-  为每个主题生成符合特定风格的配图。支持封面图生成和自定义图片比例。
-  使用场景：当用户需要为文档、文章、笔记生成配图时。
+  为每个主题生成符合特定风格的配图，并可使用 Nebula 编辑已有配图。支持封面图生成和自定义图片比例。
+  使用场景：当用户需要为文档、文章、笔记生成配图，或修改已有配图时。
   关键词：配图、插图、illustration、generate images、document images
 allowed-tools:
   - Read
@@ -358,6 +358,9 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 `NEBULA_ENDPOINT=https://img-api.apinebula.ai/v1/images/generations`；
 `[gemini]` 使用 `GEMINI_BASE_URL=https://generativelanguage.googleapis.com`，
 由 SDK 追加 API 版本和模型路径。未配置或留空时沿用这些默认地址。
+三个后端共用的代理在第一个分组之前配置，例如 `PROXY=http://127.0.0.1:81`；
+Nebula 与 nanobanana 在 HTTP 403 或明确未建立连接时使用它重试，Gemini SDK 直接通过它发送请求。
+不配置或留空时不使用此代理；付费 POST 超时后不自动重发。
 
 - **Gemini 模型**：`gemini-3-pro-image-preview`（脚本当前默认值）
 - **Nebula 模型**：`gpt-image-2-4k`，使用 image2-4k 分组令牌
@@ -433,8 +436,20 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nebula --
 优先读取 URL，兼容 Base64；保存前验证真实像素，将服务端 JPEG 转为本地扩展名对应的格式。
 接口响应保存为 `<图片文件名>.response.json`，下载失败时先复用其中的临时链接恢复下载。
 POST 超时后任务状态可能未知，不自动重发；先确认服务端状态，避免重复计费。
-HTTP 403 或连接尚未建立时会尝试 `http://127.0.0.1:81` 代理。
-当前仅接入文本生图；参考图编辑未实现。
+HTTP 403 或连接尚未建立时会尝试共享 `.env` 顶层 `PROXY` 指定的代理。
+参考图编辑使用独立入口 `scripts/edit_image.py`，不自动加入批量生图流程。
+当用户要求保留已有图片的主体、风格或布局，只修改指定部分时，先确认要保留和修改的内容；
+用户未指定编辑风格时沿用原图风格，不把生图任务的风格选择规则强加到局部编辑。
+传入一张或多张本地参考图，输出到新路径，保留原图；不要覆盖已有输出或响应缓存。
+
+```powershell
+python -X utf8 scripts/edit_image.py --image input.png --prompt "保留主体与布局，只把背景改为浅蓝色" --output output/edited.png
+```
+
+编辑调用 `POST https://img-api.apinebula.ai/v1/images/edits`，上传 multipart `image`，
+沿用 `[image2-4k]` 的 `NEBULA_API_KEY`、`NEBULA_MODEL`、`NEBULA_SIZE`、`NEBULA_QUALITY`；
+独立的 `NEBULA_EDITS_ENDPOINT` 可覆盖编辑接口地址。保存与尺寸验证沿用生图逻辑。
+请求超时后任务状态可能未知，不自动重发；下载失败时先使用响应缓存恢复，避免重复计费。
 
 完整配置说明与离线测试命令见 [README.md](README.md#使用-nebula-image2-4k-生图)，
 接口参数以 [官方文档](https://docs.apinebula.ai/docs/advanced/image/image2-4k) 为依据。

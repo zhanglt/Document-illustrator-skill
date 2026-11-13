@@ -174,7 +174,7 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 分辨率参数的实际支持情况、图片尺寸及比例以所选模型输出为准。
 此接入提供文本生图，暂不提供参考图编辑；无需 Google SDK 或新增依赖。
 请求超时为 1800 秒，复用现有代理与防重复提交逻辑：403 或明确未建立连接时尝试
-`http://127.0.0.1:81`；POST 超时或中断后不自动重发，须先核实任务状态。
+共享 `.env` 顶层的 `PROXY`；POST 超时或中断后不自动重发，须先核实任务状态。
 
 接口依据：[nanobanana 官方文档](https://docs.apinebula.ai/docs/advanced/image/nanobanana)。
 离线验证：`python -X utf8 -m unittest discover -s tests -v`。
@@ -186,6 +186,7 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 ```dotenv
 # 值为 nanobanana、nebula 或 gemini；默认后端必须放在第一个分组之前
 ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
+PROXY=http://127.0.0.1:81
 
 [nanobanana]
 NEBULA_NANOBANANA_BASE_URL=https://img-api.apinebula.ai/v1beta/models
@@ -197,6 +198,7 @@ ILLUSTRATOR_RESOLUTION=2K
 
 [image2-4k]
 NEBULA_ENDPOINT=https://img-api.apinebula.ai/v1/images/generations
+NEBULA_EDITS_ENDPOINT=https://img-api.apinebula.ai/v1/images/edits
 NEBULA_API_KEY=your-image2-4k-api-key
 NEBULA_MODEL=gpt-image-2-4k
 NEBULA_SIZE=3840x2160
@@ -238,6 +240,9 @@ Google 官方后端使用 `[gemini]`，通过 `google-genai` 调用原生 Google
 或在未配置全局值时使用进程环境变量。推荐删除分组内重复的后端选择项。
 分组支持注释、引号和多行值，沿用 dotenv 的 `${变量}` 插值；不支持的分组会报错。
 文件一旦进入分组，后续配置均属于该分组，直到遇到下一个分组标题。
+`PROXY` 是三个后端共用的全局配置，应写在第一个分组之前；留空或不配置则不使用此代理。
+Nebula image2-4k 与 nanobanana 在 HTTP 403 或确认连接尚未建立时用它重试；
+原生 Gemini SDK 在请求时直接使用该代理。付费 POST 超时或连接中断后不会自动重发。
 
 在统一 `.env` 中配置以下三项，适用于所有后端：
 
@@ -308,9 +313,21 @@ Gemini 保留原有比例，默认 2K。
 保存前验证实际像素为 `3840x2160`，服务端 JPEG 会按本地文件扩展名重新编码。
 接口成功响应另存为 `<图片文件名>.response.json`，用于下载失败后的排查和恢复，可能含图片数据或临时链接，请妥善保存。
 下载失败时先从缓存响应中的 URL 恢复下载；不要直接重新生图，以免重复计费。
-此接入提供文本生图，暂未实现文档中的参考图编辑接口。
+参考图编辑使用独立命令，不影响单图或批量文本生图。可重复传入 `--image` 添加多张参考图：
 
-网络请求遭遇 HTTP 403 或连接未建立时，使用 `http://127.0.0.1:81` 代理重试。
+```powershell
+python -X utf8 scripts/edit_image.py --image input.png --prompt "保留主体和构图，只把背景改为浅蓝色" --output output/edited.png
+```
+
+编辑请求使用 `POST https://img-api.apinebula.ai/v1/images/edits`，以 multipart 上传参考图，
+并沿用 `[image2-4k]` 中的密钥、模型、尺寸和质量配置。可单独设置
+`NEBULA_EDITS_ENDPOINT` 覆盖编辑接口地址。输入支持 PNG、JPEG、WebP；
+输出必须指定新的 PNG、JPEG 或 WebP 路径，已有图片或同名响应缓存不会被覆盖。
+默认发送 `input_fidelity=high`，请求尺寸仍以 `NEBULA_SIZE` 为准。
+编辑接口同样保存 `<图片文件名>.response.json`，优先处理 URL 并兼容 `b64_json`。
+请求超时后不要直接重试付费编辑；下载失败时先使用响应缓存恢复。
+
+网络请求遭遇 HTTP 403 或连接未建立时，使用共享 `.env` 顶层 `PROXY` 指定的代理重试。
 生图 POST 超时或连接中断后不自动重发，应先检查服务端任务状态。
 Nebula 后端使用 Python 标准库、`Pillow` 和 `python-dotenv`；无需额外安装 OpenAI SDK。
 

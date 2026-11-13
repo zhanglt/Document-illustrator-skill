@@ -4,6 +4,7 @@ import io
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
 from dotenv.parser import parse_stream
@@ -50,3 +51,18 @@ def get_provider_config(provider):
     section = _sections.get(_provider_sections.get(provider), {})
     values.update({key: value for key, value in section.items() if key != "ILLUSTRATOR_IMAGE_PROVIDER"})
     return values
+
+
+def get_proxy_url():
+    """读取共享配置中的全局代理，不从后端分组继承。"""
+    proxy = os.environ.get("PROXY", "").strip()
+    if not proxy:
+        return None
+    parsed = urlsplit(proxy)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.path not in ("", "/"):
+        raise ValueError("PROXY 必须为 http:// 或 https:// 代理地址")
+    try:
+        parsed.port
+    except ValueError:
+        raise ValueError("PROXY 端口无效") from None
+    return proxy
