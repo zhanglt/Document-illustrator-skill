@@ -1,4 +1,4 @@
-"""Nebula image2-4k、nanobanana 请求与图片保存。"""
+"""Nebula、nanobanana 与 cihebi 图片请求和保存。"""
 
 import base64
 import io
@@ -13,11 +13,12 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from PIL import Image
-from env_config import get_provider_config, get_proxy_url
+from env_config import get_configured_provider, get_provider_config, get_proxy_url
 
 
 NEBULA_ENDPOINT = "https://img-api.apinebula.ai/v1/images/generations"
 NEBULA_EDITS_ENDPOINT = "https://img-api.apinebula.ai/v1/images/edits"
+CIHEBI_BASE_URL = "https://cpa.cihebi.vip/image-api/v1"
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 
 
@@ -27,10 +28,15 @@ class NoApiRedirect(HTTPRedirectHandler):
 
 
 def get_provider(provider=None):
-    provider = provider or os.environ.get("ILLUSTRATOR_IMAGE_PROVIDER", "gemini")
-    if provider not in ("gemini", "image2-4k", "nanobanana"):
-        raise ValueError("生图后端必须为 gemini、image2-4k 或 nanobanana")
-    return provider
+    selected = (get_configured_provider() or "").strip()
+    allowed = ("gemini", "image2-4k", "nanobanana", "cihebi")
+    if not selected:
+        raise ValueError("必须在共享 .env 顶层设置 ILLUSTRATOR_IMAGE_PROVIDER")
+    if selected not in allowed:
+        raise ValueError("ILLUSTRATOR_IMAGE_PROVIDER 必须为 gemini、image2-4k、nanobanana 或 cihebi")
+    if provider is not None and provider != selected:
+        raise ValueError(f"当前后端锁定为 {selected}；不能调用 {provider}，请先修改共享 .env 顶层 ILLUSTRATOR_IMAGE_PROVIDER")
+    return selected
 
 
 def validate_options(provider, aspect_ratio, resolution):
@@ -44,8 +50,8 @@ def validate_options(provider, aspect_ratio, resolution):
 
 def add_provider_argument(parser):
     parser.add_argument(
-        "--provider", choices=["gemini", "image2-4k", "nanobanana"],
-        help="生图后端，默认读取 ILLUSTRATOR_IMAGE_PROVIDER，未配置时为 gemini",
+        "--provider", choices=["gemini", "image2-4k", "nanobanana", "cihebi"],
+        help="可省略；指定时必须与共享 .env 顶层的 ILLUSTRATOR_IMAGE_PROVIDER 一致",
     )
 
 
@@ -54,6 +60,12 @@ def resolve_options(parser, args, aspect_ratio=None, batch=False):
     try:
         args.provider = get_provider(args.provider)
         config = get_provider_config(args.provider)
+        if args.provider == "cihebi":
+            if getattr(args, "ratio", None) or args.resolution or aspect_ratio:
+                raise ValueError("cihebi 使用 [cihebi] 的 CIHEBI_IMAGE_SIZE 指定像素，不接受 --ratio 或 --resolution")
+            args.ratio = None
+            args.resolution = None
+            return
         args.ratio = aspect_ratio or getattr(args, "ratio", None) or config.get(ratio_key) or "16:9"
         args.resolution = args.resolution or config.get("ILLUSTRATOR_RESOLUTION") or (
             "4K" if args.provider == "image2-4k" else "2K"
@@ -100,6 +112,7 @@ def read_request(request, timeout, limit):
 
 def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K"):
     """使用 Gemini 原生格式生图，不持久化含完整 Base64 的响应。"""
+    get_provider("nanobanana")
     validate_options("nanobanana", aspect_ratio, resolution)
     config = get_provider_config("nanobanana")
     api_key = config.get("NEBULA_NANOBANANA_API_KEY")
@@ -155,6 +168,64 @@ def generate_nanobanana(prompt, output_path, aspect_ratio="16:9", resolution="2K
     raise ValueError("nanobanana 未返回 inlineData 图片；请检查模型或内容限制")
 
 
+def generate_cihebi(prompt, output_path):
+    """按 Image API 文档提交单张 PNG；不记录包含 Base64 的响应。"""
+    get_provider("cihebi")
+    if not prompt or not prompt.strip():
+        raise ValueError("生图 prompt 不能为空")
+    output_path = Path(output_path)
+    if output_path.suffix.lower() != ".png":
+        raise ValueError("cihebi 输出路径必须以 .png 结尾")
+    config = get_provider_config("cihebi")
+    api_key = config.get("CIHEBI_IMAGE_API_KEY")
+    if not api_key:
+        raise ValueError("请在 [cihebi] 分组设置专用 CIHEBI_IMAGE_API_KEY")
+    model = config.get("CIHEBI_IMAGE_MODEL") or "gpt-image-2.5-sunburst"
+    size = config.get("CIHEBI_IMAGE_SIZE") or "1254x1254"
+    quality = config.get("CIHEBI_IMAGE_QUALITY") or "low"
+    base_url = (config.get("CIHEBI_IMAGE_API_BASE_URL") or CIHEBI_BASE_URL).rstrip("/")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", model):
+        raise ValueError("CIHEBI_IMAGE_MODEL 必须为有效模型名称")
+    if not re.fullmatch(r"[1-9][0-9]{0,4}x[1-9][0-9]{0,4}", size):
+        raise ValueError("CIHEBI_IMAGE_SIZE 必须为宽x高格式，例如 1254x1254")
+    width, height = (int(value) for value in size.split("x"))
+    if max(width, height) > 16384 or width * height > 64 * 1024 * 1024:
+        raise ValueError("CIHEBI_IMAGE_SIZE 超过本地图片处理上限")
+    if quality not in ("auto", "low", "medium", "high"):
+        raise ValueError("CIHEBI_IMAGE_QUALITY 必须为 auto、low、medium 或 high")
+    parsed = urlsplit(base_url)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or parsed.path.rstrip("/") != "/image-api/v1"):
+        raise ValueError("CIHEBI_IMAGE_API_BASE_URL 必须为 HTTPS 且以 /image-api/v1 结尾")
+    payload = {
+        "model": model, "prompt": prompt, "n": 1, "size": size, "quality": quality,
+        "output_format": "png", "response_format": "b64_json", "stream": False,
+    }
+    request = Request(
+        base_url + "/images/generations",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    response = json.loads(read_request(request, timeout=600, limit=80 * 1024 * 1024))
+    if not isinstance(response, dict) or not isinstance(response.get("data"), list) or not response["data"]:
+        raise ValueError("cihebi 响应缺少 data[0] 图片数据")
+    item = response["data"][0]
+    encoded = item.get("b64_json") if isinstance(item, dict) else None
+    if not isinstance(encoded, str) or not encoded:
+        raise ValueError("cihebi 响应缺少 data[0].b64_json")
+    if len(encoded) > 4 * ((MAX_IMAGE_BYTES + 2) // 3):
+        raise ValueError("图片超过 50 MiB 限制")
+    image_bytes = base64.b64decode(encoded, validate=True)
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise ValueError("图片超过 50 MiB 限制")
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        image.load()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(output_path, format="PNG")
+    return str(output_path)
+
+
 def generate_nebula(prompt, output_path):
     config, api_key, model, size, quality, expected_size = _nebula_settings()
     payload = {
@@ -172,6 +243,7 @@ def generate_nebula(prompt, output_path):
 
 
 def _nebula_settings():
+    get_provider("image2-4k")
     config = get_provider_config("image2-4k")
     api_key = config.get("NEBULA_API_KEY")
     if not api_key:

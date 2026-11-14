@@ -21,6 +21,9 @@ class EnvConfigTests(unittest.TestCase):
         sections = patch.object(env_config, "_sections", {})
         sections.start()
         self.addCleanup(sections.stop)
+        selected = patch.object(env_config, "_configured_provider", None)
+        selected.start()
+        self.addCleanup(selected.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.home = Path(self.temp.name)
@@ -68,13 +71,30 @@ class EnvConfigTests(unittest.TestCase):
             self.assertEqual(config["NEBULA_API_KEY"], "4k-test")
             self.assertNotIn("NEBULA_NANOBANANA_API_KEY", config)
 
+    def test_cihebi_section_is_selected_without_other_keys(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(
+            "ILLUSTRATOR_IMAGE_PROVIDER=cihebi\n"
+            "[image2-4k]\nNEBULA_API_KEY=other-key\n"
+            "[cihebi]\nCIHEBI_IMAGE_API_KEY=cihebi-key\nCIHEBI_IMAGE_SIZE=1254x1254\n",
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
+            env_config.find_and_load_env()
+            args = SimpleNamespace(provider=None, ratio=None, resolution=None)
+            image_api.resolve_options(argparse.ArgumentParser(), args)
+            self.assertEqual(args.provider, "cihebi")
+            config = env_config.get_provider_config(args.provider)
+            self.assertEqual(config["CIHEBI_IMAGE_API_KEY"], "cihebi-key")
+            self.assertNotIn("NEBULA_API_KEY", config)
+
     def test_invalid_proxy_is_rejected(self):
         for value in ("socks5://127.0.0.1:81", "http://", "http://127.0.0.1:bad"):
             with self.subTest(value=value), patch.dict(os.environ, {"PROXY": value}):
                 with self.assertRaisesRegex(ValueError, "PROXY"):
                     env_config.get_proxy_url()
 
-    def test_image_options_from_shared_env_and_cli_override(self):
+    def test_image_options_from_shared_env_and_cli_lock(self):
         self.config.parent.mkdir(parents=True)
         self.config.write_text(
             "ILLUSTRATOR_IMAGE_PROVIDER=nanobanana\n"
@@ -89,8 +109,8 @@ class EnvConfigTests(unittest.TestCase):
                 image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
                 self.assertEqual((args.provider, args.ratio, args.resolution), ("nanobanana", ratio, "1K"))
             args = SimpleNamespace(provider="image2-4k", ratio="16:9", resolution="4K")
-            image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
-            self.assertEqual((args.provider, args.ratio, args.resolution), ("image2-4k", "16:9", "4K"))
+            with self.assertRaises(SystemExit):
+                image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
 
     def test_invalid_env_options_fail_before_request(self):
         cases = [
@@ -103,18 +123,22 @@ class EnvConfigTests(unittest.TestCase):
         parser = unittest.mock.Mock()
         parser.error.side_effect = ValueError("配置错误")
         for env in cases:
-            with self.subTest(env=env), patch.dict(os.environ, env, clear=True), patch.object(image_api, "read_request") as read:
+            selected = env.get("ILLUSTRATOR_IMAGE_PROVIDER", "gemini")
+            with self.subTest(env=env), patch.object(env_config, "_configured_provider", selected), patch.dict(os.environ, env, clear=True), patch.object(image_api, "read_request") as read:
                 args = SimpleNamespace(provider=None, ratio=None, resolution=None)
                 with self.assertRaisesRegex(ValueError, "配置错误"):
                     image_api.resolve_options(parser, args, batch="ILLUSTRATOR_SINGLE_RATIO" not in env)
                 read.assert_not_called()
 
-    def test_unconfigured_defaults(self):
+    def test_missing_provider_fails_and_configured_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, "必须在共享 .env 顶层设置"):
+                image_api.get_provider()
             for provider, resolution in (("nanobanana", "2K"), ("gemini", "2K"), ("image2-4k", "4K")):
-                args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
-                image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
-                self.assertEqual((args.ratio, args.resolution), ("16:9", resolution))
+                with patch.object(env_config, "_configured_provider", provider):
+                    args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
+                    image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
+                    self.assertEqual((args.ratio, args.resolution), ("16:9", resolution))
 
     def test_missing_shared_file_preserves_environment(self):
         with patch.object(Path, "home", return_value=self.home), patch.dict(
@@ -138,7 +162,7 @@ class EnvConfigTests(unittest.TestCase):
         )
         with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
             env_config.find_and_load_env()
-            for provider, ratio, resolution in ((None, "3:4", "2K"), ("image2-4k", "16:9", "4K"), (None, "3:4", "2K")):
+            for provider, ratio, resolution in ((None, "3:4", "2K"), ("nanobanana", "3:4", "2K")):
                 for batch in (True, False):
                     args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
                     image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
@@ -149,6 +173,8 @@ class EnvConfigTests(unittest.TestCase):
             self.assertEqual(banana["NEBULA_NANOBANANA_API_KEY"], "banana-test")
             self.assertEqual(banana["NEBULA_NANOBANANA_MODEL"], "gemini-3-pro-image-preview")
             self.assertNotIn("NEBULA_NANOBANANA_API_KEY", env_config.get_provider_config("image2-4k"))
+            with self.assertRaisesRegex(ValueError, "锁定"):
+                image_api.get_provider("image2-4k")
             args = SimpleNamespace(provider=None, ratio="16:9", resolution="4K")
             image_api.resolve_options(argparse.ArgumentParser(), args)
             self.assertEqual((args.ratio, args.resolution), ("16:9", "4K"))
@@ -178,7 +204,7 @@ class EnvConfigTests(unittest.TestCase):
         )
         with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
             env_config.find_and_load_env()
-            for provider, resolution in ((None, "2K"), ("image2-4k", "4K"), ("nanobanana", "2K")):
+            for provider, resolution in ((None, "2K"), ("nanobanana", "2K")):
                 for batch in (False, True):
                     args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
                     image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
@@ -186,7 +212,7 @@ class EnvConfigTests(unittest.TestCase):
             with patch.dict(os.environ, {"ILLUSTRATOR_IMAGE_PROVIDER": "image2-4k"}):
                 args = SimpleNamespace(provider=None, ratio=None, resolution=None)
                 image_api.resolve_options(argparse.ArgumentParser(), args)
-                self.assertEqual((args.provider, args.resolution), ("image2-4k", "4K"))
+                self.assertEqual((args.provider, args.resolution), ("nanobanana", "2K"))
 
     def test_native_gemini_section_is_isolated_and_selected(self):
         self.config.parent.mkdir(parents=True)
@@ -211,8 +237,8 @@ class EnvConfigTests(unittest.TestCase):
             self.assertNotIn("NEBULA_NANOBANANA_API_KEY", config)
             self.assertNotIn("GEMINI_API_KEY", env_config.get_provider_config("nanobanana"))
             args = SimpleNamespace(provider="nanobanana", ratio=None, resolution=None)
-            image_api.resolve_options(argparse.ArgumentParser(), args)
-            self.assertEqual(args.resolution, "1K")
+            with self.assertRaises(SystemExit):
+                image_api.resolve_options(argparse.ArgumentParser(), args)
 
     def test_invalid_group_fails_without_exposing_values(self):
         self.config.parent.mkdir(parents=True)

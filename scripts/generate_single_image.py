@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 from style_selection import add_style_arguments, resolve_style
 from env_config import find_and_load_env, get_provider_config, get_proxy_url
-from image_api import add_provider_argument, generate_nebula, generate_nanobanana, get_provider, resolve_options, validate_options
+from image_api import add_provider_argument, generate_nebula, generate_nanobanana, generate_cihebi, get_provider, resolve_options, validate_options
 
 
 
@@ -93,6 +93,8 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
 
     try:
         provider = get_provider(provider)
+        if provider == "cihebi":
+            return generate_cihebi(full_prompt, output_path)
         validate_options(provider, aspect_ratio, resolution)
         if provider == "image2-4k":
             return generate_nebula(full_prompt, output_path)
@@ -199,7 +201,8 @@ def main():
   NEBULA_MODEL / NEBULA_SIZE / NEBULA_QUALITY: image2-4k 请求参数
   NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
   NEBULA_NANOBANANA_MODEL: 模型名称，默认 gemini-3.1-flash-image
-  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、image2-4k 或 nanobanana
+  CIHEBI_IMAGE_API_KEY / CIHEBI_IMAGE_MODEL / CIHEBI_IMAGE_SIZE / CIHEBI_IMAGE_QUALITY: cihebi 分组配置
+  ILLUSTRATOR_IMAGE_PROVIDER: 必填且锁定后端，gemini、image2-4k、nanobanana 或 cihebi
   ILLUSTRATOR_SINGLE_RATIO: 单图默认比例，未配置时为 16:9
   ILLUSTRATOR_RESOLUTION: 默认请求分辨率，命令行参数优先
 """
@@ -213,13 +216,13 @@ def main():
         '--ratio',
         choices=['16:9', '3:4'],
         default=None,
-        help='宽高比（默认读取 ILLUSTRATOR_SINGLE_RATIO，未配置时为 16:9）'
+        help='宽高比（cihebi 不适用；其他后端默认读取 ILLUSTRATOR_SINGLE_RATIO）'
     )
     parser.add_argument(
         '--resolution',
         choices=['1K', '2K', '4K'],
         default=None,
-        help='分辨率（默认读取 ILLUSTRATOR_RESOLUTION；未配置时 Gemini/nanobanana 为 2K，Nebula 为 4K）'
+        help='分辨率（cihebi 不适用；其他后端默认读取 ILLUSTRATOR_RESOLUTION）'
     )
     parser.add_argument(
         '--cover',
@@ -241,10 +244,15 @@ def main():
     image_type = "封面图" if args.cover else "内容配图"
     print(f"正在生成{image_type}...")
     print(f"  标题: {args.title}")
-    print(f"  比例: {args.ratio}")
-    print(f"  分辨率: {args.resolution}")
+    if args.provider != "cihebi":
+        print(f"  比例: {args.ratio}")
+        print(f"  分辨率: {args.resolution}")
 
-    if args.provider == "image2-4k":
+    if args.provider == "cihebi":
+        config = get_provider_config("cihebi")
+        print(f"  请求尺寸: {config.get('CIHEBI_IMAGE_SIZE') or '1254x1254'}")
+        print(f"  请求质量: {config.get('CIHEBI_IMAGE_QUALITY') or 'low'}")
+    elif args.provider == "image2-4k":
         print(f"  请求尺寸: {get_provider_config('image2-4k').get('NEBULA_SIZE', '3840x2160')}")
     elif args.provider == "nanobanana":
         print("  尺寸: 由所选模型决定，以实际输出图片为准")

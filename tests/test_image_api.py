@@ -34,11 +34,14 @@ class NebulaTests(unittest.TestCase):
         sections = patch.object(env_config, "_sections", {})
         sections.start()
         self.addCleanup(sections.stop)
+        selected = patch.object(env_config, "_configured_provider", "image2-4k")
+        selected.start()
+        self.addCleanup(selected.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.output = Path(self.temp.name) / "images" / "result.png"
         env = patch.dict(os.environ, {
-            "NEBULA_API_KEY": "test-key", "ILLUSTRATOR_IMAGE_PROVIDER": "gemini",
+            "NEBULA_API_KEY": "test-key", "ILLUSTRATOR_IMAGE_PROVIDER": "image2-4k",
             "ILLUSTRATOR_SINGLE_RATIO": "", "ILLUSTRATOR_BATCH_RATIO": "",
             "ILLUSTRATOR_RESOLUTION": "",
             "NEBULA_MODEL": "gpt-image-2-4k", "NEBULA_SIZE": "3840x2160", "NEBULA_QUALITY": "high",
@@ -220,15 +223,15 @@ class NebulaTests(unittest.TestCase):
                 image_api.generate_nebula("test", self.output)
         self.assertEqual(read.call_count, 1)
 
-    def test_backend_defaults_and_explicit_override(self):
+    def test_backend_lock_rejects_explicit_override(self):
         parser = argparse.ArgumentParser()
-        for provider, expected in ((None, "2K"), ("image2-4k", "4K")):
+        for provider in (None, "image2-4k"):
             args = SimpleNamespace(provider=provider, resolution=None)
             image_api.resolve_options(parser, args)
-            self.assertEqual(args.resolution, expected)
-        with patch.dict(os.environ, {"ILLUSTRATOR_IMAGE_PROVIDER": "image2-4k"}):
-            self.assertEqual(image_api.get_provider(), "image2-4k")
-            self.assertEqual(image_api.get_provider("gemini"), "gemini")
+            self.assertEqual(args.resolution, "4K")
+        self.assertEqual(image_api.get_provider(), "image2-4k")
+        with self.assertRaisesRegex(ValueError, "锁定"):
+            image_api.get_provider("gemini")
 
     def test_unsupported_options_fail_before_request(self):
         for ratio, resolution in (("3:4", "4K"), ("16:9", "2K")):
@@ -264,7 +267,7 @@ class NebulaTests(unittest.TestCase):
         )])
         client.models.generate_content.return_value = response
         self.output.parent.mkdir(parents=True)
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-test"}), patch.object(
+        with patch.object(env_config, "_configured_provider", "gemini"), patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-test"}), patch.object(
             genai, "Client", return_value=client
         ):
             result = generate_single_image.generate_image(
@@ -284,7 +287,7 @@ class NebulaTests(unittest.TestCase):
             inline_data=object(), as_image=lambda: Image.new("RGB", (16, 9)),
         )])
         section = {"gemini": {"PROXY": "http://wrong.example:82"}}
-        with patch.object(env_config, "_sections", section), patch.dict(os.environ, {
+        with patch.object(env_config, "_configured_provider", "gemini"), patch.object(env_config, "_sections", section), patch.dict(os.environ, {
             "GEMINI_API_KEY": "gemini-test", "PROXY": "http://127.0.0.1:81",
         }), patch.object(genai, "Client", return_value=client) as factory:
             generate_single_image.generate_image(
@@ -304,7 +307,7 @@ class NebulaTests(unittest.TestCase):
             "GEMINI_BASE_URL": "https://gemini.example",
             "ILLUSTRATOR_BATCH_RATIO": "3:4", "ILLUSTRATOR_RESOLUTION": "4K",
         }}
-        with patch.object(env_config, "_sections", section), patch.object(genai, "Client", return_value=client) as factory:
+        with patch.object(env_config, "_configured_provider", "gemini"), patch.object(env_config, "_sections", section), patch.object(genai, "Client", return_value=client) as factory:
             args = SimpleNamespace(provider="gemini", ratio=None, resolution=None)
             image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
             result = generate_illustrations.generate_illustration(
@@ -382,9 +385,13 @@ class NebulaTests(unittest.TestCase):
 
     def test_cli_rejects_2k_without_accessing_document(self):
         script = Path(__file__).resolve().parents[1] / "scripts/generate_illustrations.py"
+        shared_env = Path(self.temp.name) / ".agents" / "skills" / "document-illustrator" / ".env"
+        shared_env.parent.mkdir(parents=True)
+        shared_env.write_text("ILLUSTRATOR_IMAGE_PROVIDER=image2-4k\n", encoding="utf-8")
+        process_env = dict(os.environ, USERPROFILE=self.temp.name, HOME=self.temp.name)
         result = subprocess.run([
             sys.executable, "-X", "utf8", str(script), "missing.md", "--provider", "image2-4k", "--resolution", "2K",
-        ], capture_output=True, encoding="utf-8")
+        ], capture_output=True, encoding="utf-8", env=process_env)
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("仅支持", result.stderr)
 

@@ -26,6 +26,9 @@ class NanobananaTests(unittest.TestCase):
         sections = patch.object(env_config, "_sections", {})
         sections.start()
         self.addCleanup(sections.stop)
+        selected = patch.object(env_config, "_configured_provider", "nanobanana")
+        selected.start()
+        self.addCleanup(selected.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.output = Path(self.temp.name) / "images/result.png"
@@ -110,7 +113,8 @@ class NanobananaTests(unittest.TestCase):
             args = SimpleNamespace(provider=None, resolution=None)
             image_api.resolve_options(argparse.ArgumentParser(), args)
             self.assertEqual((args.provider, args.resolution), ("nanobanana", "2K"))
-            self.assertEqual(image_api.get_provider("image2-4k"), "image2-4k")
+            with self.assertRaisesRegex(ValueError, "锁定"):
+                image_api.get_provider("image2-4k")
         with patch.object(generate_single_image, "generate_nanobanana", return_value="done") as generate:
             self.assertEqual(generate_single_image.generate_image(
                 "title", "body", "style", str(self.output), "3:4", "1K", True, "nanobanana"

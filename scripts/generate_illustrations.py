@@ -10,7 +10,7 @@ import re
 import argparse
 from pathlib import Path
 from style_selection import add_style_arguments, choose_style, resolve_style
-from env_config import find_and_load_env
+from env_config import find_and_load_env, get_provider_config
 from image_api import add_provider_argument, resolve_options
 
 
@@ -401,7 +401,8 @@ def main():
   NEBULA_MODEL / NEBULA_SIZE / NEBULA_QUALITY: image2-4k 请求参数
   NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
   NEBULA_NANOBANANA_MODEL: 模型名称，默认 gemini-3.1-flash-image
-  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、image2-4k 或 nanobanana
+  CIHEBI_IMAGE_API_KEY / CIHEBI_IMAGE_MODEL / CIHEBI_IMAGE_SIZE / CIHEBI_IMAGE_QUALITY: cihebi 分组配置
+  ILLUSTRATOR_IMAGE_PROVIDER: 必填且锁定后端，gemini、image2-4k、nanobanana 或 cihebi
   ILLUSTRATOR_BATCH_RATIO: 批量默认比例，未配置时为 16:9
   ILLUSTRATOR_RESOLUTION: 默认请求分辨率，命令行参数优先
 """
@@ -410,7 +411,7 @@ def main():
     parser.add_argument('document', help='文档路径')
     parser.add_argument(
         '--ratio', choices=['16:9', '3:4'], default=None,
-        help='宽高比（默认读取 ILLUSTRATOR_BATCH_RATIO，未配置时为 16:9）'
+        help='宽高比（cihebi 不适用；其他后端默认读取 ILLUSTRATOR_BATCH_RATIO）'
     )
     parser.add_argument(
         '--output',
@@ -421,7 +422,7 @@ def main():
         '--resolution',
         choices=['1K', '2K', '4K'],
         default=None,
-        help='分辨率（默认读取 ILLUSTRATOR_RESOLUTION；未配置时 Gemini/nanobanana 为 2K，Nebula 为 4K）'
+        help='分辨率（cihebi 不适用；其他后端默认读取 ILLUSTRATOR_RESOLUTION）'
     )
     add_style_arguments(parser)
     parser.add_argument(
@@ -525,7 +526,10 @@ def main():
         sys.exit(1)
 
     print(f"\n🖼️  开始生成 {len(sections)} 张配图...")
-    print(f"分辨率: {args.resolution}")
+    if args.provider == "cihebi":
+        print(f"请求尺寸: {get_provider_config('cihebi').get('CIHEBI_IMAGE_SIZE') or '1254x1254'}")
+    else:
+        print(f"分辨率: {args.resolution}")
     print("=" * 60)
     print()
 

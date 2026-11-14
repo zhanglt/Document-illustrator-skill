@@ -11,13 +11,15 @@ from dotenv.parser import parse_stream
 
 
 _sections = {}
-_provider_sections = {"image2-4k": "image2-4k", "nanobanana": "nanobanana", "gemini": "gemini"}
+_configured_provider = None
+_provider_sections = {"image2-4k": "image2-4k", "nanobanana": "nanobanana", "gemini": "gemini", "cihebi": "cihebi"}
 
 
 def find_and_load_env():
     """加载统一配置的全局项，缓存分组，分组值仅在选择对应后端时使用。"""
-    global _sections
+    global _sections, _configured_provider
     _sections = {}
+    _configured_provider = None
     env_path = Path.home() / ".agents" / "skills" / "document-illustrator" / ".env"
     if not env_path.is_file():
         return False
@@ -29,7 +31,7 @@ def find_and_load_env():
         if header:
             section = header.group(1)
             if section not in _provider_sections.values():
-                raise ValueError(".env 中存在不支持的分组；请使用 [image2-4k]、[nanobanana] 或 [gemini]")
+                raise ValueError(".env 中存在不支持的分组；请使用 [image2-4k]、[nanobanana]、[gemini] 或 [cihebi]")
             groups.setdefault(section, [])
         elif binding.error:
             raise ValueError(f".env 第 {binding.original.line} 行格式错误")
@@ -40,13 +42,20 @@ def find_and_load_env():
             stream=io.StringIO("".join(lines))
         ).items() if value is not None}
 
-    os.environ.update(parse_values(groups.pop(None)))
+    global_values = parse_values(groups.pop(None))
+    _configured_provider = global_values.get("ILLUSTRATOR_IMAGE_PROVIDER")
+    os.environ.update(global_values)
     _sections = {name: parse_values(lines) for name, lines in groups.items()}
     return True
 
 
+def get_configured_provider():
+    """只返回共享 .env 顶层指定的后端，不接受进程环境或分组覆盖。"""
+    return _configured_provider
+
+
 def get_provider_config(provider):
-    """分组覆盖全局及环境变量；后端选择只接受全局项或命令行参数。"""
+    """分组覆盖全局及环境变量；后端选择由共享 .env 顶层锁定。"""
     values = dict(os.environ)
     section = _sections.get(_provider_sections.get(provider), {})
     values.update({key: value for key, value in section.items() if key != "ILLUSTRATOR_IMAGE_PROVIDER"})

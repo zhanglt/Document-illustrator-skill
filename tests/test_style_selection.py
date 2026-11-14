@@ -10,11 +10,17 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import style_selection
+import env_config
 import generate_single_image
 import generate_illustrations
 
 
 class StyleSelectionTests(unittest.TestCase):
+    def setUp(self):
+        selected = patch.object(env_config, "_configured_provider", "nanobanana")
+        selected.start()
+        self.addCleanup(selected.stop)
+
     def test_menu_rejects_blank_and_invalid_choices(self):
         output = io.StringIO()
         with patch("builtins.input", side_effect=["", "invalid", "2"]) as ask, contextlib.redirect_stdout(output):

@@ -51,6 +51,10 @@ allowed-tools:
 可以推荐风格，但推荐不能代替选择。等待期间可读取文档、归纳主题，不能发起生图 API 请求。
 只在获得用户选择后传入 `--style`、`--style-file` 或底层 `style_prompt`，不要自行构造这些参数绕过询问。
 
+### 生图后端由共享 .env 强制锁定
+
+统一 `.env` 第一个分组之前必须设置 `ILLUSTRATOR_IMAGE_PROVIDER`，值为 `gemini`、`image2-4k`、`nanobanana` 或 `cihebi`。只允许调用该后端的生图 API；参考图编辑仅在锁定 `image2-4k` 时可调用。命令行 `--provider` 只能省略或填写相同值，不能切换后端。缺失、无效或不匹配时停止，不发送图片请求。进程环境变量、其他分组中的同名项及直接调用底层 Python 函数都不能绕过此锁定。
+
 ### 生图 API 调用前必须确认 prompt 文件
 
 每次生图或参考图编辑任务，在提交任何图片 API 请求之前，先把**每张图片实际要提交的完整 prompt**写入独立的 UTF-8 无 BOM 文件，并把文件路径交给用户审阅。文本生图文件须包含已选风格提示词、图片标题、正文内容及封面图的附加要求；批量脚本会截断过长正文，文件中必须呈现截断后的实际内容。编辑任务保存实际提交的编辑 prompt。建议放在本次输出目录的 `prompts/` 下，按 `cover.md`、`illustration-01.md`、`edit-01.md` 等命名。
@@ -374,13 +378,16 @@ Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
 `/{model}:generateContent`，API 版本升级时修改此配置；`[image2-4k]` 使用完整接口地址
 `NEBULA_ENDPOINT=https://img-api.apinebula.ai/v1/images/generations`；
 `[gemini]` 使用 `GEMINI_BASE_URL=https://generativelanguage.googleapis.com`，
-由 SDK 追加 API 版本和模型路径。未配置或留空时沿用这些默认地址。
-三个后端共用的代理在第一个分组之前配置，例如 `PROXY=http://127.0.0.1:81`；
+由 SDK 追加 API 版本和模型路径；`[cihebi]` 使用
+`CIHEBI_IMAGE_API_BASE_URL=https://cpa.cihebi.vip/image-api/v1`，脚本追加 `/images/generations`。
+未配置或留空时沿用这些默认地址。
+各后端共用的代理在第一个分组之前配置，例如 `PROXY=http://127.0.0.1:81`；
 Nebula 与 nanobanana 在 HTTP 403 或明确未建立连接时使用它重试，Gemini SDK 直接通过它发送请求。
 不配置或留空时不使用此代理；付费 POST 超时后不自动重发。
 
 - **Gemini 模型**：`gemini-3-pro-image-preview`（脚本当前默认值）
 - **Nebula 模型**：`gpt-image-2-4k`，使用 image2-4k 分组令牌
+- **cihebi 默认模型**：`gpt-image-2.5-sunburst`，使用独立的 `CIHEBI_IMAGE_API_KEY`
 - **成本**：每张图片 = 1 次 API 调用
 - **速度**：取决于后端负载；Nebula 4K 请求超时为 1800 秒
 
@@ -401,20 +408,21 @@ Nebula 与 nanobanana 在 HTTP 403 或明确未建立连接时使用它重试，
 用户指定 nanobanana 时，两个脚本均传入 `--provider nanobanana`。
 统一 `.env` 中使用专用 `NEBULA_NANOBANANA_API_KEY`（nanobanana 分组令牌），
 不复用 image2-4k 的密钥。`NEBULA_NANOBANANA_MODEL` 默认为 `gemini-3.1-flash-image`，
-可指定令牌支持的其他模型；`ILLUSTRATOR_IMAGE_PROVIDER=nanobanana` 可设为默认。
+可指定令牌支持的其他模型；使用此后端时，必须将顶部 `ILLUSTRATOR_IMAGE_PROVIDER` 设为 `nanobanana`。
 单图、批量均支持 16:9、3:4；可请求 1K、2K、4K，默认 2K，
 具体支持值及实际像素由所选模型决定，不套用 image2-4k 的 4K 横图限制。
 
 统一 `.env` 使用 `ILLUSTRATOR_SINGLE_RATIO` 设置单图默认比例，
 `ILLUSTRATOR_BATCH_RATIO` 设置批量默认比例，`ILLUSTRATOR_RESOLUTION` 设置默认请求分辨率。
-两个入口均支持 `--ratio`、`--resolution` 覆盖配置。不配置或值为空时，比例为 16:9，
+Gemini、nanobanana 和 image2-4k 的两个入口支持 `--ratio`、`--resolution` 覆盖配置。
+不配置或值为空时，比例为 16:9，
 分辨率使用后端默认值（Gemini/nanobanana 为 2K，image2-4k 为 4K）。
-这些设置适用于所有后端；与后端限制冲突时，请求前报错，须调整配置或显式覆盖。
+这些设置适用于上述三个后端；与后端限制冲突时，请求前报错，须调整配置或显式覆盖。
 
-统一 `.env` 兼容平铺格式和 `[image2-4k]`、`[nanobanana]`、`[gemini]` 分组。
-默认 `ILLUSTRATOR_IMAGE_PROVIDER` 必须放在第一个分组之前，分组内的同名项会被忽略。
+统一 `.env` 兼容平铺格式和 `[image2-4k]`、`[nanobanana]`、`[gemini]`、`[cihebi]` 分组。
+必填的 `ILLUSTRATOR_IMAGE_PROVIDER` 必须放在第一个分组之前，分组内的同名项会被忽略。
 `image2-4k` 使用 `[image2-4k]`，其余后端使用同名分组；密钥、模型和图片参数按所选分组读取。
-参数优先级：命令行 > 对应分组 > 全局配置 > 进程环境 > 内置默认值。
+图片参数优先级：命令行 > 对应分组 > 全局配置 > 进程环境 > 内置默认值；此规则不适用于后端锁定值。
 推荐仅在 `[nanobanana]` 配置 `ILLUSTRATOR_SINGLE_RATIO`、`ILLUSTRATOR_BATCH_RATIO`、
 `ILLUSTRATOR_RESOLUTION`；`[image2-4k]` 配置 `NEBULA_API_KEY`、`NEBULA_MODEL`、
 `NEBULA_SIZE`、`NEBULA_QUALITY`，不必重复比例和分辨率。其缺省值为 16:9、4K，
@@ -432,10 +440,34 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 详见 [README.md](README.md#使用-nebula-nanobanana-分组生图) 和
 [官方接口说明](https://docs.apinebula.ai/docs/advanced/image/nanobanana)。
 
+#### cihebi Image API 分组
+
+用户指定此接入时，先把统一 `.env` 首个分组之前的 `ILLUSTRATOR_IMAGE_PROVIDER` 设为 `cihebi`；
+单图或批量命令的 `--provider cihebi` 可省略，传入时必须与配置一致。[cihebi] 分组填写独立的 `CIHEBI_IMAGE_API_KEY`；
+不要复用其他后端密钥。`CIHEBI_IMAGE_API_BASE_URL` 默认为
+`https://cpa.cihebi.vip/image-api/v1`，`CIHEBI_IMAGE_MODEL` 默认为 `gpt-image-2.5-sunburst`，
+`CIHEBI_IMAGE_SIZE` 默认为 `1254x1254`，`CIHEBI_IMAGE_QUALITY` 默认为 `low`。
+此后端使用 `CIHEBI_IMAGE_SIZE` 指定请求像素，不接受 `--ratio` 或 `--resolution`，不继承
+`ILLUSTRATOR_SINGLE_RATIO`、`ILLUSTRATOR_BATCH_RATIO`、`ILLUSTRATOR_RESOLUTION`。
+遵守本技能的逐张 prompt 文件审阅与确认步骤后再调用 API。
+
+```powershell
+python -X utf8 scripts/generate_single_image.py --provider cihebi --title "主题" --content "已确认的配图内容" --style ticket --output output/image-01.png
+python -X utf8 scripts/generate_illustrations.py article.md --provider cihebi --style ticket --level h2 --output output
+```
+
+请求采用文档的 OpenAI Images 兼容 JSON：`n=1`、`output_format=png`、
+`response_format=b64_json`、`stream=false`，600 秒超时。解码 `data[0].b64_json`
+并保存 PNG，不持久化完整响应。文档还列出 `gpt-image-2.5-flare`、`gpt-image-2`、
+`gpt-image-1.5`，只有 Sunburst 被标为已验证出图；按用户指定模型配置，不自行替换。
+此入口不提供参考图编辑。超时、429 或连接中断后不自动重复收费请求。
+详见 [接入文档](https://cpa.cihebi.vip/image-api/docs/) 和
+[README.md](README.md#使用-cihebi-image-api-生图)。
+
 #### 原有 image2-4k 分组
 
-两个脚本支持 `--provider gemini|image2-4k`。不指定时读取 `ILLUSTRATOR_IMAGE_PROVIDER`，
-未配置时使用 Gemini。用户明确指定 Nebula 时，传入 `--provider image2-4k`；不要改用其他服务。
+两个脚本支持 `--provider gemini|image2-4k`，但命令行值必须与共享 `.env` 顶层的
+`ILLUSTRATOR_IMAGE_PROVIDER` 一致。未配置时停止。用户明确指定 Nebula 时，先把顶层值设为 `image2-4k`。
 在统一路径 `~/.agents/skills/document-illustrator/.env` 配置 `NEBULA_API_KEY`，或使用同名环境变量；令牌须属于 image2-4k 分组。
 Nebula 无需 Gemini 密钥或 Google SDK，仍需要 `Pillow` 和 `python-dotenv`。
 
