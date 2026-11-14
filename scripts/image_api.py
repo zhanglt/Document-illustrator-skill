@@ -28,8 +28,8 @@ class NoApiRedirect(HTTPRedirectHandler):
 
 def get_provider(provider=None):
     provider = provider or os.environ.get("ILLUSTRATOR_IMAGE_PROVIDER", "gemini")
-    if provider not in ("gemini", "nebula", "nanobanana"):
-        raise ValueError("生图后端必须为 gemini、nebula 或 nanobanana")
+    if provider not in ("gemini", "image2-4k", "nanobanana"):
+        raise ValueError("生图后端必须为 gemini、image2-4k 或 nanobanana")
     return provider
 
 
@@ -38,13 +38,13 @@ def validate_options(provider, aspect_ratio, resolution):
         raise ValueError("不支持的图片比例或分辨率")
     if provider == "gemini" and resolution == "1K":
         raise ValueError("现有 Gemini 后端仅支持 2K、4K；1K 请使用 nanobanana")
-    if provider == "nebula" and (aspect_ratio != "16:9" or resolution != "4K"):
+    if provider == "image2-4k" and (aspect_ratio != "16:9" or resolution != "4K"):
         raise ValueError("Nebula image2-4k 仅支持 --ratio 16:9 --resolution 4K")
 
 
 def add_provider_argument(parser):
     parser.add_argument(
-        "--provider", choices=["gemini", "nebula", "nanobanana"],
+        "--provider", choices=["gemini", "image2-4k", "nanobanana"],
         help="生图后端，默认读取 ILLUSTRATOR_IMAGE_PROVIDER，未配置时为 gemini",
     )
 
@@ -56,7 +56,7 @@ def resolve_options(parser, args, aspect_ratio=None, batch=False):
         config = get_provider_config(args.provider)
         args.ratio = aspect_ratio or getattr(args, "ratio", None) or config.get(ratio_key) or "16:9"
         args.resolution = args.resolution or config.get("ILLUSTRATOR_RESOLUTION") or (
-            "4K" if args.provider == "nebula" else "2K"
+            "4K" if args.provider == "image2-4k" else "2K"
         )
         validate_options(args.provider, args.ratio, args.resolution)
     except ValueError as exc:
@@ -172,7 +172,7 @@ def generate_nebula(prompt, output_path):
 
 
 def _nebula_settings():
-    config = get_provider_config("nebula")
+    config = get_provider_config("image2-4k")
     api_key = config.get("NEBULA_API_KEY")
     if not api_key:
         raise ValueError("请设置 NEBULA_API_KEY，令牌必须属于 image2-4k 分组")

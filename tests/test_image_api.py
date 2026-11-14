@@ -222,12 +222,12 @@ class NebulaTests(unittest.TestCase):
 
     def test_backend_defaults_and_explicit_override(self):
         parser = argparse.ArgumentParser()
-        for provider, expected in ((None, "2K"), ("nebula", "4K")):
+        for provider, expected in ((None, "2K"), ("image2-4k", "4K")):
             args = SimpleNamespace(provider=provider, resolution=None)
             image_api.resolve_options(parser, args)
             self.assertEqual(args.resolution, expected)
-        with patch.dict(os.environ, {"ILLUSTRATOR_IMAGE_PROVIDER": "nebula"}):
-            self.assertEqual(image_api.get_provider(), "nebula")
+        with patch.dict(os.environ, {"ILLUSTRATOR_IMAGE_PROVIDER": "image2-4k"}):
+            self.assertEqual(image_api.get_provider(), "image2-4k")
             self.assertEqual(image_api.get_provider("gemini"), "gemini")
 
     def test_unsupported_options_fail_before_request(self):
@@ -236,7 +236,7 @@ class NebulaTests(unittest.TestCase):
                 generate_single_image, "generate_nebula"
             ) as generate:
                 result = generate_single_image.generate_image(
-                    "test", "test", "style", str(self.output), ratio, resolution, provider="nebula",
+                    "test", "test", "style", str(self.output), ratio, resolution, provider="image2-4k",
                 )
                 self.assertIsNone(result)
                 generate.assert_not_called()
@@ -244,15 +244,15 @@ class NebulaTests(unittest.TestCase):
     def test_single_and_batch_dispatch(self):
         with patch.object(generate_single_image, "generate_nebula", return_value=str(self.output)) as generate:
             result = generate_single_image.generate_image(
-                "title", "body", "style", str(self.output), resolution="4K", is_cover=True, provider="nebula",
+                "title", "body", "style", str(self.output), resolution="4K", is_cover=True, provider="image2-4k",
             )
             self.assertEqual(result, str(self.output))
             self.assertIn("封面", generate.call_args.args[0])
         with patch.object(generate_single_image, "generate_image", return_value="done") as generate:
             self.assertEqual(generate_illustrations.generate_illustration(
-                "title", "body", "style", self.temp.name, 1, "4K", provider="nebula",
+                "title", "body", "style", self.temp.name, 1, "4K", provider="image2-4k",
             ), "done")
-            self.assertEqual(generate.call_args.kwargs["provider"], "nebula")
+            self.assertEqual(generate.call_args.kwargs["provider"], "image2-4k")
             self.assertTrue(generate.call_args.args[3].endswith("illustration-01.png"))
 
     def test_gemini_request_is_preserved(self):
@@ -383,7 +383,7 @@ class NebulaTests(unittest.TestCase):
     def test_cli_rejects_2k_without_accessing_document(self):
         script = Path(__file__).resolve().parents[1] / "scripts/generate_illustrations.py"
         result = subprocess.run([
-            sys.executable, "-X", "utf8", str(script), "missing.md", "--provider", "nebula", "--resolution", "2K",
+            sys.executable, "-X", "utf8", str(script), "missing.md", "--provider", "image2-4k", "--resolution", "2K",
         ], capture_output=True, encoding="utf-8")
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("仅支持", result.stderr)

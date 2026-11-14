@@ -110,7 +110,7 @@ class NanobananaTests(unittest.TestCase):
             args = SimpleNamespace(provider=None, resolution=None)
             image_api.resolve_options(argparse.ArgumentParser(), args)
             self.assertEqual((args.provider, args.resolution), ("nanobanana", "2K"))
-            self.assertEqual(image_api.get_provider("nebula"), "nebula")
+            self.assertEqual(image_api.get_provider("image2-4k"), "image2-4k")
         with patch.object(generate_single_image, "generate_nanobanana", return_value="done") as generate:
             self.assertEqual(generate_single_image.generate_image(
                 "title", "body", "style", str(self.output), "3:4", "1K", True, "nanobanana"

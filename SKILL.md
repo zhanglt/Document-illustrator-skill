@@ -51,6 +51,14 @@ allowed-tools:
 可以推荐风格，但推荐不能代替选择。等待期间可读取文档、归纳主题，不能发起生图 API 请求。
 只在获得用户选择后传入 `--style`、`--style-file` 或底层 `style_prompt`，不要自行构造这些参数绕过询问。
 
+### 生图 API 调用前必须确认 prompt 文件
+
+每次生图或参考图编辑任务，在提交任何图片 API 请求之前，先把**每张图片实际要提交的完整 prompt**写入独立的 UTF-8 无 BOM 文件，并把文件路径交给用户审阅。文本生图文件须包含已选风格提示词、图片标题、正文内容及封面图的附加要求；批量脚本会截断过长正文，文件中必须呈现截断后的实际内容。编辑任务保存实际提交的编辑 prompt。建议放在本次输出目录的 `prompts/` 下，按 `cover.md`、`illustration-01.md`、`edit-01.md` 等命名。
+
+等待用户明确确认这些 prompt 文件后，才能调用所选生图 API。确认内容提纲、风格或表示“开始准备”，均不代替对最终 prompt 文件的确认；此前其他任务的确认也不沿用。用户要求修改时，先更新对应文件并再次等待确认。新增图片或修改已确认的 prompt 后，也要先确认更新后的文件。
+
+调用时必须使用用户确认的文件原文作为请求 prompt。若所用脚本会重新拼接或改写 prompt，先核对实际请求文本与文件逐字一致；无法保证一致时，不提交 API 请求。准备、写入和审阅 prompt 文件阶段不得发起生图 API 请求，也不得以命令行、批量入口或底层 Python 函数绕过此步骤。
+
 ### 第 1 步：Codex 读取和理解文档
 
 当你请求生成配图时，Codex 会：
@@ -148,7 +156,7 @@ Codex 会询问你的偏好：
 
 ✓ 所有内容已覆盖，无遗漏
 
-确认开始生成配图吗？(Y/N)
+以上内容归纳是否正确？确认后将写入逐张 prompt 文件供你审阅，暂不生图。(Y/N)
 ```
 
 **关键保证**：
@@ -156,9 +164,13 @@ Codex 会询问你的偏好：
 - ✅ 逻辑清晰：按照内容的自然逻辑分段
 - ✅ 用户可控：展示归纳结果，等待用户确认
 
-### 第 4 步：生成配图
+### 第 4 步：写入并确认最终 prompt
 
-确认后，Codex 调用 Python 脚本生成图片：
+按第 3 步确认的内容与本次选定的风格，为封面和每张内容配图写入完整 prompt 文件。将文件路径及图片对应关系发给用户，等待其明确确认；有修改则更新文件并重新确认。此时不调用 API。
+
+### 第 5 步：生成配图
+
+用户确认最终 prompt 文件后，Codex 使用文件原文调用所选生图 API 生成图片：
 
 ```
 🖼️  开始生成配图...
@@ -306,11 +318,16 @@ Codex: 期望生成多少张内容配图？
 用户: 5
 
 Codex: [展示归纳的 5 个主题]
-        确认开始生成配图吗？
+        以上内容归纳是否正确？
 
 用户: Y
 
-Codex: [调用 Python 脚本生成 6 张图片]
+Codex: [将 6 张图片的完整 prompt 分别写入文件并提供路径]
+       请审阅这些 prompt 文件，确认后我再调用生图 API。
+
+用户: 确认这些 prompt
+
+Codex: [使用已确认的 prompt 文件原文生成 6 张图片]
         ✨ 完成！配图已保存到 ~/blog/images/
 ```
 
@@ -321,7 +338,7 @@ Codex: [调用 Python 脚本生成 6 张图片]
 
 Codex: [读取笔记，即使没有任何标题也能理解内容]
         [智能识别 3 个核心主题]
-        [询问配置、展示归纳、生成配图]
+        [询问配置、展示归纳、写入并确认 prompt 文件、生成配图]
 ```
 
 ### 示例 3：自定义数量
@@ -331,7 +348,7 @@ Codex: [读取笔记，即使没有任何标题也能理解内容]
 
 Codex: 好的，16:9 竖屏，不生成封面，8 张内容配图。
         [将文档归纳为 8 个主题]
-        [展示归纳结果，用户确认后生成]
+        [展示归纳结果，用户确认后写入并确认 prompt 文件，再生成]
 ```
 
 ## 🔧 技术细节
@@ -396,7 +413,7 @@ Nebula 与 nanobanana 在 HTTP 403 或明确未建立连接时使用它重试，
 
 统一 `.env` 兼容平铺格式和 `[image2-4k]`、`[nanobanana]`、`[gemini]` 分组。
 默认 `ILLUSTRATOR_IMAGE_PROVIDER` 必须放在第一个分组之前，分组内的同名项会被忽略。
-`nebula` 使用 `[image2-4k]`，其余后端使用同名分组；密钥、模型和图片参数按所选分组读取。
+`image2-4k` 使用 `[image2-4k]`，其余后端使用同名分组；密钥、模型和图片参数按所选分组读取。
 参数优先级：命令行 > 对应分组 > 全局配置 > 进程环境 > 内置默认值。
 推荐仅在 `[nanobanana]` 配置 `ILLUSTRATOR_SINGLE_RATIO`、`ILLUSTRATOR_BATCH_RATIO`、
 `ILLUSTRATOR_RESOLUTION`；`[image2-4k]` 配置 `NEBULA_API_KEY`、`NEBULA_MODEL`、
@@ -417,14 +434,14 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 
 #### 原有 image2-4k 分组
 
-两个脚本支持 `--provider gemini|nebula`。不指定时读取 `ILLUSTRATOR_IMAGE_PROVIDER`，
-未配置时使用 Gemini。用户明确指定 Nebula 时，传入 `--provider nebula`；不要改用其他服务。
+两个脚本支持 `--provider gemini|image2-4k`。不指定时读取 `ILLUSTRATOR_IMAGE_PROVIDER`，
+未配置时使用 Gemini。用户明确指定 Nebula 时，传入 `--provider image2-4k`；不要改用其他服务。
 在统一路径 `~/.agents/skills/document-illustrator/.env` 配置 `NEBULA_API_KEY`，或使用同名环境变量；令牌须属于 image2-4k 分组。
 Nebula 无需 Gemini 密钥或 Google SDK，仍需要 `Pillow` 和 `python-dotenv`。
 
 ```powershell
-python -X utf8 scripts/generate_single_image.py --provider nebula --title "主题" --content "已确认的配图内容" --style-file styles/ticket.md --output output/image-01.png --resolution 4K
-python -X utf8 scripts/generate_illustrations.py article.md --provider nebula --style ticket --level h2 --resolution 4K
+python -X utf8 scripts/generate_single_image.py --provider image2-4k --title "主题" --content "已确认的配图内容" --style-file styles/ticket.md --output output/image-01.png --resolution 4K
+python -X utf8 scripts/generate_illustrations.py article.md --provider image2-4k --style ticket --level h2 --resolution 4K
 ```
 
 脚本调用 `POST https://img-api.apinebula.ai/v1/images/generations`，默认使用
@@ -494,7 +511,7 @@ Claude 归纳内容时遵循以下原则：
 
 - 展示归纳结果给用户确认
 - 用户可以要求调整
-- 确认后才开始生成
+- 将逐张完整 prompt 写入文件并等待明确确认，确认后才开始生成
 
 ## 🐛 故障排除
 

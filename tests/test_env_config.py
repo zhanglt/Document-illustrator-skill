@@ -43,13 +43,30 @@ class EnvConfigTests(unittest.TestCase):
     def test_global_proxy_from_shared_env(self):
         self.config.parent.mkdir(parents=True)
         self.config.write_text(
-            "ILLUSTRATOR_IMAGE_PROVIDER=nebula\nPROXY=http://127.0.0.1:81\n"
+            "ILLUSTRATOR_IMAGE_PROVIDER=image2-4k\nPROXY=http://127.0.0.1:81\n"
             "[image2-4k]\nPROXY=http://wrong.example:82\n",
             encoding="utf-8",
         )
         with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
             env_config.find_and_load_env()
             self.assertEqual(env_config.get_proxy_url(), "http://127.0.0.1:81")
+
+    def test_image2_4k_default_selects_matching_section(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(
+            "ILLUSTRATOR_IMAGE_PROVIDER=image2-4k\n"
+            "[nanobanana]\nNEBULA_NANOBANANA_API_KEY=banana-test\n"
+            "[image2-4k]\nNEBULA_API_KEY=4k-test\n",
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
+            env_config.find_and_load_env()
+            args = SimpleNamespace(provider=None, ratio=None, resolution=None)
+            image_api.resolve_options(argparse.ArgumentParser(), args)
+            self.assertEqual((args.provider, args.ratio, args.resolution), ("image2-4k", "16:9", "4K"))
+            config = env_config.get_provider_config(args.provider)
+            self.assertEqual(config["NEBULA_API_KEY"], "4k-test")
+            self.assertNotIn("NEBULA_NANOBANANA_API_KEY", config)
 
     def test_invalid_proxy_is_rejected(self):
         for value in ("socks5://127.0.0.1:81", "http://", "http://127.0.0.1:bad"):
@@ -71,17 +88,17 @@ class EnvConfigTests(unittest.TestCase):
                 args = SimpleNamespace(provider=None, ratio=None, resolution=None)
                 image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
                 self.assertEqual((args.provider, args.ratio, args.resolution), ("nanobanana", ratio, "1K"))
-            args = SimpleNamespace(provider="nebula", ratio="16:9", resolution="4K")
+            args = SimpleNamespace(provider="image2-4k", ratio="16:9", resolution="4K")
             image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
-            self.assertEqual((args.provider, args.ratio, args.resolution), ("nebula", "16:9", "4K"))
+            self.assertEqual((args.provider, args.ratio, args.resolution), ("image2-4k", "16:9", "4K"))
 
     def test_invalid_env_options_fail_before_request(self):
         cases = [
             {"ILLUSTRATOR_SINGLE_RATIO": "invalid"},
             {"ILLUSTRATOR_BATCH_RATIO": "invalid"},
             {"ILLUSTRATOR_RESOLUTION": "8K"},
-            {"ILLUSTRATOR_IMAGE_PROVIDER": "nebula", "ILLUSTRATOR_BATCH_RATIO": "3:4"},
-            {"ILLUSTRATOR_IMAGE_PROVIDER": "nebula", "ILLUSTRATOR_RESOLUTION": "2K"},
+            {"ILLUSTRATOR_IMAGE_PROVIDER": "image2-4k", "ILLUSTRATOR_BATCH_RATIO": "3:4"},
+            {"ILLUSTRATOR_IMAGE_PROVIDER": "image2-4k", "ILLUSTRATOR_RESOLUTION": "2K"},
         ]
         parser = unittest.mock.Mock()
         parser.error.side_effect = ValueError("配置错误")
@@ -94,7 +111,7 @@ class EnvConfigTests(unittest.TestCase):
 
     def test_unconfigured_defaults(self):
         with patch.dict(os.environ, {}, clear=True):
-            for provider, resolution in (("nanobanana", "2K"), ("gemini", "2K"), ("nebula", "4K")):
+            for provider, resolution in (("nanobanana", "2K"), ("gemini", "2K"), ("image2-4k", "4K")):
                 args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
                 image_api.resolve_options(argparse.ArgumentParser(), args, batch=True)
                 self.assertEqual((args.ratio, args.resolution), ("16:9", resolution))
@@ -115,23 +132,23 @@ class EnvConfigTests(unittest.TestCase):
             "[image2-4k]\nNEBULA_API_KEY=4k-test\nILLUSTRATOR_RESOLUTION=4K\n"
             "[nanobanana]\nNEBULA_NANOBANANA_API_KEY=banana-test\n"
             "NEBULA_NANOBANANA_MODEL=gemini-3-pro-image-preview\n"
-            "ILLUSTRATOR_IMAGE_PROVIDER=nebula\nILLUSTRATOR_SINGLE_RATIO=3:4\n"
+            "ILLUSTRATOR_IMAGE_PROVIDER=image2-4k\nILLUSTRATOR_SINGLE_RATIO=3:4\n"
             "ILLUSTRATOR_BATCH_RATIO=3:4\nILLUSTRATOR_RESOLUTION=2K\n",
             encoding="utf-8",
         )
         with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
             env_config.find_and_load_env()
-            for provider, ratio, resolution in ((None, "3:4", "2K"), ("nebula", "16:9", "4K"), (None, "3:4", "2K")):
+            for provider, ratio, resolution in ((None, "3:4", "2K"), ("image2-4k", "16:9", "4K"), (None, "3:4", "2K")):
                 for batch in (True, False):
                     args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
                     image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
                     self.assertEqual((args.ratio, args.resolution), (ratio, resolution))
             self.assertEqual(image_api.get_provider(), "nanobanana")
-            self.assertEqual(env_config.get_provider_config("nebula")["NEBULA_API_KEY"], "4k-test")
+            self.assertEqual(env_config.get_provider_config("image2-4k")["NEBULA_API_KEY"], "4k-test")
             banana = env_config.get_provider_config("nanobanana")
             self.assertEqual(banana["NEBULA_NANOBANANA_API_KEY"], "banana-test")
             self.assertEqual(banana["NEBULA_NANOBANANA_MODEL"], "gemini-3-pro-image-preview")
-            self.assertNotIn("NEBULA_NANOBANANA_API_KEY", env_config.get_provider_config("nebula"))
+            self.assertNotIn("NEBULA_NANOBANANA_API_KEY", env_config.get_provider_config("image2-4k"))
             args = SimpleNamespace(provider=None, ratio="16:9", resolution="4K")
             image_api.resolve_options(argparse.ArgumentParser(), args)
             self.assertEqual((args.ratio, args.resolution), ("16:9", "4K"))
@@ -152,7 +169,7 @@ class EnvConfigTests(unittest.TestCase):
     def test_expected_group_layout_uses_backend_specific_defaults(self):
         self.config.parent.mkdir(parents=True)
         self.config.write_text(
-            "#值为nanobanana或者nebula\nILLUSTRATOR_IMAGE_PROVIDER=nanobanana\n\n"
+            "#值为nanobanana或者image2-4k\nILLUSTRATOR_IMAGE_PROVIDER=nanobanana\n\n"
             "[nanobanana]\nNEBULA_NANOBANANA_API_KEY=banana-test\n"
             "NEBULA_NANOBANANA_MODEL=gemini-3.1-flash-image\n"
             "ILLUSTRATOR_SINGLE_RATIO=16:9\nILLUSTRATOR_BATCH_RATIO=16:9\nILLUSTRATOR_RESOLUTION=2K\n\n"
@@ -161,15 +178,15 @@ class EnvConfigTests(unittest.TestCase):
         )
         with patch.object(Path, "home", return_value=self.home), patch.dict(os.environ, {}, clear=True):
             env_config.find_and_load_env()
-            for provider, resolution in ((None, "2K"), ("nebula", "4K"), ("nanobanana", "2K")):
+            for provider, resolution in ((None, "2K"), ("image2-4k", "4K"), ("nanobanana", "2K")):
                 for batch in (False, True):
                     args = SimpleNamespace(provider=provider, ratio=None, resolution=None)
                     image_api.resolve_options(argparse.ArgumentParser(), args, batch=batch)
                     self.assertEqual((args.ratio, args.resolution), ("16:9", resolution))
-            with patch.dict(os.environ, {"ILLUSTRATOR_IMAGE_PROVIDER": "nebula"}):
+            with patch.dict(os.environ, {"ILLUSTRATOR_IMAGE_PROVIDER": "image2-4k"}):
                 args = SimpleNamespace(provider=None, ratio=None, resolution=None)
                 image_api.resolve_options(argparse.ArgumentParser(), args)
-                self.assertEqual((args.provider, args.resolution), ("nebula", "4K"))
+                self.assertEqual((args.provider, args.resolution), ("image2-4k", "4K"))
 
     def test_native_gemini_section_is_isolated_and_selected(self):
         self.config.parent.mkdir(parents=True)

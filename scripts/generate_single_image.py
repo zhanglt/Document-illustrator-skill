@@ -94,7 +94,7 @@ def generate_image(title, content, style_prompt, output_path, aspect_ratio="16:9
     try:
         provider = get_provider(provider)
         validate_options(provider, aspect_ratio, resolution)
-        if provider == "nebula":
+        if provider == "image2-4k":
             return generate_nebula(full_prompt, output_path)
         if provider == "nanobanana":
             return generate_nanobanana(full_prompt, output_path, aspect_ratio, resolution)
@@ -199,7 +199,7 @@ def main():
   NEBULA_MODEL / NEBULA_SIZE / NEBULA_QUALITY: image2-4k 请求参数
   NEBULA_NANOBANANA_API_KEY: Nebula nanobanana 分组密钥
   NEBULA_NANOBANANA_MODEL: 模型名称，默认 gemini-3.1-flash-image
-  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、nebula 或 nanobanana
+  ILLUSTRATOR_IMAGE_PROVIDER: 默认后端 gemini、image2-4k 或 nanobanana
   ILLUSTRATOR_SINGLE_RATIO: 单图默认比例，未配置时为 16:9
   ILLUSTRATOR_RESOLUTION: 默认请求分辨率，命令行参数优先
 """
@@ -244,8 +244,8 @@ def main():
     print(f"  比例: {args.ratio}")
     print(f"  分辨率: {args.resolution}")
 
-    if args.provider == "nebula":
-        print(f"  请求尺寸: {get_provider_config('nebula').get('NEBULA_SIZE', '3840x2160')}")
+    if args.provider == "image2-4k":
+        print(f"  请求尺寸: {get_provider_config('image2-4k').get('NEBULA_SIZE', '3840x2160')}")
     elif args.provider == "nanobanana":
         print("  尺寸: 由所选模型决定，以实际输出图片为准")
     else:

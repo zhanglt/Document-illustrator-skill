@@ -16,7 +16,7 @@
 - **📝 格式无关**：支持任何格式的文档（Markdown、纯文本、PDF 等）
 - **🎨 16 种风格**：保留原有 3 种，新增 codex-ppt 的 13 种移植风格，覆盖技术、报告、教学与创意场景
 - **📐 图片规格**：Gemini 支持 16:9 和 3:4；Nebula image2-4k 支持 16:9、3840x2160
-- **生图后端可选**：通过 `--provider gemini|nebula|nanobanana` 切换，支持配置默认后端
+- **生图后端可选**：通过 `--provider gemini|image2-4k|nanobanana` 切换，支持配置默认后端
 - **🖼️ 封面图可选**：可生成概括全文的封面图作为系列配图的引导
 - **✅ 内容完整**：展示归纳结果供你确认，确保所有重要信息都被包含
 
@@ -142,7 +142,7 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 ### 使用 Nebula nanobanana 分组生图
 
 单图和批量脚本均新增 `--provider nanobanana`，使用 Gemini 原生接口，
-与 `--provider nebula` 的 image2-4k 分组分别选择、分别配置密钥。
+与 `--provider image2-4k` 的 image2-4k 分组分别选择、分别配置密钥。
 在统一配置文件 `~/.agents/skills/document-illustrator/.env` 中添加：
 
 ```dotenv
@@ -184,7 +184,7 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 统一 `.env` 同时支持原有平铺格式和以下分组格式（示例密钥均为占位符）：
 
 ```dotenv
-# 值为 nanobanana、nebula 或 gemini；默认后端必须放在第一个分组之前
+# 值为 nanobanana、image2-4k 或 gemini；默认后端必须放在第一个分组之前
 ILLUSTRATOR_IMAGE_PROVIDER=nanobanana
 PROXY=http://127.0.0.1:81
 
@@ -228,7 +228,7 @@ ILLUSTRATOR_RESOLUTION=2K
 `[image2-4k]` 无需重复配置比例与分辨率；会使用其内置的 16:9、4K 默认值，
 实际请求像素由 `NEBULA_SIZE` 决定。切换顶部默认后端即可选择对应分组。
 
-`--provider nebula` 对应 `[image2-4k]`；`--provider nanobanana` 对应 `[nanobanana]`；
+`--provider image2-4k` 对应 `[image2-4k]`；`--provider nanobanana` 对应 `[nanobanana]`；
 Google 官方后端使用 `[gemini]`，通过 `google-genai` 调用原生 Google Gemini API，
 不会调用 Nebula。`GEMINI_API_KEY` 使用 Google 官方密钥，`GEMINI_MODEL` 默认
 `gemini-3-pro-image-preview`；可按官方模型权限更换。该分组独立配置比例和分辨率，
@@ -269,14 +269,14 @@ python -X utf8 scripts/generate_illustrations.py article.md --provider nanobanan
 
 ### 使用 Nebula image2-4k 生图
 
-两个脚本均支持 `--provider gemini` 和 `--provider nebula`。未指定时读取
+两个脚本均支持 `--provider gemini` 和 `--provider image2-4k`。未指定时读取
 `ILLUSTRATOR_IMAGE_PROVIDER`，未配置则使用原有 Gemini 后端。
 
 所有 Agent 统一在 `~/.agents/skills/document-illustrator/.env` 中配置（不要提交真实密钥）：
 
 ```dotenv
 NEBULA_API_KEY=your-image2-4k-api-key
-ILLUSTRATOR_IMAGE_PROVIDER=nebula
+ILLUSTRATOR_IMAGE_PROVIDER=image2-4k
 ```
 
 必须在 Nebula 创建属于 **image2-4k 分组**的令牌，并复制完整 API Key。
@@ -287,10 +287,10 @@ ILLUSTRATOR_IMAGE_PROVIDER=nebula
 
 ```powershell
 # 单图；--cover 可用于生成封面
-python -X utf8 scripts/generate_single_image.py --provider nebula --title "智慧水利" --content "监测感知、数字孪生、预警调度" --style-file styles/gradient-glass.md --output output/cover.png --cover
+python -X utf8 scripts/generate_single_image.py --provider image2-4k --title "智慧水利" --content "监测感知、数字孪生、预警调度" --style-file styles/gradient-glass.md --output output/cover.png --cover
 
 # 按 Markdown 二级标题批量生成
-python -X utf8 scripts/generate_illustrations.py article.md --provider nebula --style ticket --level h2 --output output
+python -X utf8 scripts/generate_illustrations.py article.md --provider image2-4k --style ticket --level h2 --output output
 ```
 
 接口依据：[Nebula image2-4k 官方文档](https://docs.apinebula.ai/docs/advanced/image/image2-4k)。
@@ -348,7 +348,7 @@ npx skills add https://github.com/zhanglt/Document-illustrator-skill
 **手动安装**：
 
 ```bash
-cd ~/.claude/skills/
+cd ~/.codex/skills/
 git clone https://github.com/zhanglt/Document-illustrator-skill.git document-illustrator
 cd document-illustrator
 ```
@@ -372,7 +372,7 @@ GEMINI_API_KEY=your-api-key-here
 ### 步骤 3: 安装 Python 依赖
 
 ```bash
-cd ~/.claude/skills/document-illustrator
+cd ~/.codex/skills/document-illustrator
 pip install google-genai pillow python-dotenv
 ```
 
@@ -406,9 +406,13 @@ python3 scripts/generate_single_image.py --help
 自定义风格通过 `--style-file` 指定。助手直接调用 Python 函数时也须先向用户确认风格，
 脚本无法判断参数是否来自真实的对话选择，因此该要求同时写入 `SKILL.md`。
 
-### 方式 1: 通过 Claude Code 使用（推荐）
+### 生图前审阅最终 prompt 文件
 
-这是主要的使用方式，让 Claude 智能处理整个流程。
+通过本技能生成或编辑图片时，助手先将每张图片实际提交给 API 的完整 prompt 写入独立的 UTF-8 无 BOM 文件，提供文件路径供你审阅，并等待你明确确认。批量任务逐张保存；如果修改了 prompt，需更新文件并重新确认。内容归纳或风格选择的确认不等于最终 prompt 确认。确认前不调用图片 API，正式请求须使用已确认文件的原文。直接运行 CLI 不提供这道对话确认流程，需由调用者先完成审阅与确认。
+
+### 方式 1: 通过 Codex 使用（推荐）
+
+这是主要的使用方式，让 Codex 智能处理整个流程。
 
 **基本命令**：
 
@@ -427,16 +431,19 @@ python3 scripts/generate_single_image.py --help
    - 否 - 仅生成内容配图
 
 3. **指定配图数量**
-   - 根据文档长度，Claude 会推荐合适的数量
+   - 根据文档长度，Codex 会推荐合适的数量
    - 你可以自定义需要的图片数量（建议 3-10 张）
 
 4. **确认内容归纳**
-   - Claude 会展示归纳的主题列表
+   - Codex 会展示归纳的主题列表
    - 确认所有重要内容都被包含
    - 可以要求调整归纳结果
 
-5. **生成配图**
-   - 确认后，调用所选 Gemini 或 Nebula API 生成图片
+5. **审阅逐张 prompt 文件**
+   - 助手把完整 prompt 分别写入文件，提供路径，等待你确认
+
+6. **生成配图**
+   - 确认最终 prompt 文件后，调用所选 Gemini 或 Nebula API 生成图片
    - 图片保存到文档所在目录的 `images/` 文件夹
 
 **完整示例**：
@@ -444,7 +451,7 @@ python3 scripts/generate_single_image.py --help
 ```
 用户: 帮我为 ~/documents/ai-evolution.md 生成配图，用渐变玻璃风格
 
-Claude: 好的，让我先读取这个文档...
+codex: 好的，让我先读取这个文档...
         [读取并分析文档内容]
 
         检测到文档长度约 3000 字。
@@ -455,19 +462,19 @@ Claude: 好的，让我先读取这个文档...
 
 用户: 1
 
-Claude: 是否生成封面图？
+codex: 是否生成封面图？
         1. 是
         2. 否
 
 用户: 是
 
-Claude: 期望生成多少张内容配图？
+codex: 期望生成多少张内容配图？
         建议范围：3-10 张
         根据文档内容，推荐生成 5 张
 
 用户: 5
 
-Claude: 📋 内容归纳完成
+codex: 📋 内容归纳完成
 
         📄 封面图内容：
         "AI 技术演化：从规则到智能"
@@ -482,11 +489,16 @@ Claude: 📋 内容归纳完成
 
         ✓ 所有内容已覆盖，无遗漏
 
-        确认开始生成配图吗？(Y/N)
+        以上内容归纳是否正确？确认后我会写入 prompt 文件供你审阅，暂不生图。(Y/N)
 
 用户: Y
 
-Claude: 🖼️  开始生成配图...
+codex: [写入封面及 5 张内容配图的完整 prompt 文件并提供路径]
+        请审阅这些 prompt 文件，确认后再调用生图 API。
+
+用户: 确认这些 prompt
+
+codex: 🖼️  开始生成配图...
 
         正在生成封面图...
         ✓ 已保存: ~/documents/images/cover.png
@@ -553,11 +565,13 @@ python3 scripts/generate_single_image.py \
 ```
 📄 文档输入
     ↓
-🤖 Claude 读取和理解
+🤖 codex 读取和理解
     ↓
 💡 AI 智能归纳核心主题
     ↓
 ✅ 用户确认内容分配
+    ↓
+📝 写入逐张 prompt 文件并等待用户确认
     ↓
 🎨 调用所选生图 API 生成图片
     ↓
@@ -577,7 +591,7 @@ python3 scripts/generate_single_image.py \
 
 **Document Illustrator**：
 ```
-AI 理解内容 → 智能归纳主题 → 用户确认 → 生成配图
+AI 理解内容 → 智能归纳主题 → 写入并确认 prompt 文件 → 生成配图
     ↓
 ✅ 格式无关，任何文档都能处理
 ✅ 保证内容完整性
@@ -597,7 +611,7 @@ AI 理解内容 → 智能归纳主题 → 用户确认 → 生成配图
 document-illustrator/
 ├── README.md                 # 项目说明文档（本文件）
 ├── LICENSE                   # MIT 许可证
-├── SKILL.md                  # Skill 定义文件（供 Claude Code 使用）
+├── SKILL.md                  # Skill 定义文件（供 codex 使用）
 ├── .env                      # 仅当此目录为 ~/.agents/skills/document-illustrator 时在此配置
 ├── .gitignore                # Git 忽略规则
 ├── scripts/                  # Python 脚本目录
@@ -682,7 +696,7 @@ document-illustrator/
 ### Q: 生成的图片不符合预期怎么办？
 
 **A**: 可以尝试：
-1. 在归纳展示阶段，告诉 Claude 你的期望，它会重新归纳
+1. 在归纳展示阶段，告诉 codex 你的期望，它会重新归纳
 2. 尝试不同的风格
 3. 调整配图数量（增加或减少）
 4. 提供更详细的文档内容
@@ -698,7 +712,7 @@ Nebula image2-4k 仅支持 16:9、4K，选择该后端时默认使用 4K；不�
 
 ### Q: 支持批量处理多个文档吗？
 
-**A**: 目前推荐通过 Claude Code 逐个处理文档。如果需要批量处理，可以编写自定义脚本循环调用 `generate_single_image.py`。
+**A**: 目前推荐通过 codex 逐个处理文档。如果需要批量处理，可以编写自定义脚本循环调用 `generate_single_image.py`。
 
 ### Q: 成本估算？
 
@@ -725,7 +739,7 @@ Gemini 费用查看 [Gemini API 定价](https://ai.google.dev/pricing)；Nebula 
 | **图片格式** | PNG |
 | **16:9 分辨率** | Gemini：2K / 4K；Nebula：仅 3840x2160 |
 | **3:4 分辨率** | 仅 Gemini：2K (1920x2560) / 4K (2880x3840) |
-| **支持文档格式** | Markdown, 纯文本, PDF 等（任何 Claude 可读的格式） |
+| **支持文档格式** | Markdown, 纯文本, PDF 等（任何 codex 可读的格式） |
 | **生成时间** | 依后端负载而定；Nebula 4K 使用 1800 秒请求超时 |
 | **Python 版本** | 3.8+ |
 | **主要依赖** | google-genai, pillow, python-dotenv |

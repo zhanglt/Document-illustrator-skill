@@ -11,7 +11,7 @@ from dotenv.parser import parse_stream
 
 
 _sections = {}
-_provider_sections = {"nebula": "image2-4k", "nanobanana": "nanobanana", "gemini": "gemini"}
+_provider_sections = {"image2-4k": "image2-4k", "nanobanana": "nanobanana", "gemini": "gemini"}
 
 
 def find_and_load_env():
